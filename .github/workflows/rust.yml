@@ -94,6 +94,11 @@ jobs:
         python-version: '3'
     - name: Run all tests
       run: |
+        # Setup
         wasm-pack build --target web --out-name build
+        mkdir -p private/corpus
+        curl https://www.bbc.co.uk/news > private/corpus/bbcnews.html
         pip install wasmtime
+        
+        # Run
         python python/example.py
