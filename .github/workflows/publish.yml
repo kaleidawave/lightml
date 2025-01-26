@@ -1,0 +1,77 @@
+name: Publish crate on crates.io and WASM version to JSR
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "major/minor/patch or semver"
+        required: false
+        default: "patch"
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write # The OIDC ID token is used for authentication with JSR.
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set git credentials
+        run: |
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+      - uses: jetli/wasm-pack-action@v0.4.0
+        with:
+          version: 'latest'
+      - uses: denoland/setup-deno@v1
+        with:
+          deno-version: vx.x.x
+
+      - name: Crates publish
+        uses: kaleidawave/crates-release-gh-action@main
+        id: release
+        with:
+          version: ${{ github.event.inputs.version }}
+          crates-token: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+      - name: Build WASM, package.json, jsr.json and add type definition references
+        run: | 
+          wasm-pack build --target web --out-name build
+
+          cp README.md pkg/README.md
+
+          # Add type definition references
+          build_ts_reference='/// <reference types="./build.d.ts"/>'
+          mv pkg/build.js temp.build.js
+          cat <(echo "$build_ts_reference") temp.build.js >> pkg/build.js
+          rm temp.build.js
+
+          # Create main.js with same reference and auto-initialisation
+          echo "$build_ts_reference" > pkg/main.js
+          echo 'import{initSync}from"./build.js";initSync({module:await fetch(import.meta.resolve("./build_bg.wasm")).then(r=>r.arrayBuffer())});export*from"./build.js";' >> pkg/main.js
+
+          modifications='.module = "main.js" | .main = "main.js" | .exports["./uninitialised"] = "./build.js" | .exports["."] = "./main.js"'
+          selections='{ name: ("@bengineering/" + .name), version: .version, license: .license, exclude: (.files | .[length] |= "main.js" | .[length] |= "README.md" | map("!./" + .)), exports: .exports }'
+
+          mv pkg/package.json temp.package.json
+          jq "$modifications" temp.package.json > pkg/package.json
+          rm temp.package.json
+          jq "$selections" pkg/package.json > pkg/jsr.json
+
+      - name: Publish on JSR
+        run: deno publish --allow-dirty
+        working-directory: pkg
+        
+      - name: Push updated Cargo.toml
+        run: |
+          git add .
+          git commit -m "Release: ${{ steps.release.outputs.new-versions-description }}"
+          git tag "release/${{ steps.release.outputs.new-version }}"
+          git push --tags origin main
+
+      - name: Discord
+        uses: rjstone/discord-webhook-notify@master
+        with:
+          severity: info
+          text: "Released ${{ steps.release.outputs.new-versions-description }}"
+          webhookUrl: ${{ secrets.DISCORD_WEBHOOK_ENDPOINT }}
