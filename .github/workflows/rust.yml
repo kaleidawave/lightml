@@ -76,3 +76,29 @@ jobs:
           cargo publish --no-verify --dry-run
         done
       shell: bash
+
+  python:
+    needs: validity
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/cache@v4
+      with:
+        path: ${{ env.CACHE_PATHS }}
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+    - uses: jetli/wasm-pack-action@v0.4.0
+      with:
+        version: 'latest'
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3'
+    - name: Run all tests
+      run: |
+        # Setup
+        wasm-pack build --target web --out-name build
+        mkdir -p private/corpus
+        curl https://www.bbc.co.uk/news > private/corpus/bbcnews.html
+        pip install wasmtime
+        
+        # Run
+        python python/example.py
