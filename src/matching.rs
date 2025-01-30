@@ -95,7 +95,8 @@ impl<'a> Selector<'a> {
                 '.' => {
                     let mut len = rest.len();
                     for (i, chr) in rest.char_indices() {
-                        if !(chr.is_alphanumeric() || matches!(chr, '-' | '_')) {
+                        let valid_class_name = chr.is_alphanumeric() || matches!(chr, '-' | '_');
+                        if !valid_class_name {
                             len = i;
                             break;
                         }
@@ -106,7 +107,9 @@ impl<'a> Selector<'a> {
                 '#' => {
                     let mut len = rest.len();
                     for (i, chr) in rest.char_indices() {
-                        if !(chr.is_alphanumeric() || matches!(chr, '-' | '_')) {
+                        let valid_identifier_name =
+                            chr.is_alphanumeric() || matches!(chr, '-' | '_');
+                        if !valid_identifier_name {
                             len = i;
                             break;
                         }
