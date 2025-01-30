@@ -56,7 +56,6 @@ jobs:
 
     - name: Run some examples
       shell: bash
-      continue-on-error: true
       run: |
         sites=(
           "https://www.bbc.co.uk/news"
@@ -64,9 +63,13 @@ jobs:
           "https://github.com/"
         )
 
+        cargo build --example main
+
         for url in "${sites[@]}"; do
           curl -sS $url > out.html
-          { cargo run --example main out.html --check } || echo "Could not parse source @ $url"
+          if !(target/debug/examples/main out.html --check); then
+            echo "Could not parse source @ $url"
+          fi
         done
 
   clippy:

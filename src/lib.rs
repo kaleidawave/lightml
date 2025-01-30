@@ -156,7 +156,7 @@ impl Element {
             let closing_tag_name = reader.parse_identifier("closing tag")?;
             reader.expect('>')?;
             if closing_tag_name != tag_name {
-                dbg!("mismatched tag names");
+                dbg!("mismatched tag names", closing_tag_name, tag_name, reader.current().get(..20));
                 return Err(());
                 // return Err(ParseError::new(
                 // 	crate::ParseErrors::ClosingTagDoesNotMatch {

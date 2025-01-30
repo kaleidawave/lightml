@@ -102,23 +102,28 @@ impl<'a> Lexer<'a> {
         Err(())
     }
 
-    pub fn parse_identifier(&mut self, _position: &str) -> Result<&'a str, ()> {
+    pub fn parse_identifier(&mut self, position: &str) -> Result<&'a str, ()> {
         let mut chars = self.current().chars();
         let first = if let Some(chr) = chars.next() {
             let valid = chr.is_alphabetic(); // || matches!(chr, '-' | '_' | '$' | ':');
             if !valid {
-                dbg!(chr, _position);
+                dbg!(chr, position, self.head);
                 return Err(());
             } else {
                 chr.len_utf8()
             }
         } else {
-            dbg!();
             return Err(());
         };
         let mut consumed = first;
         for chr in chars {
-            if chr.is_alphanumeric() || matches!(chr, '-' | '_' | '$' | ':') {
+            // WIP
+            let is_part_of_value = if let "Attribute value" = position {
+                !(chr.is_whitespace() || matches!(chr, '>'))
+            } else {
+                chr.is_alphanumeric() || matches!(chr, '-' | '_' | '$' | ':')
+            };
+            if is_part_of_value {
                 consumed += chr.len_utf8();
             } else {
                 break;
