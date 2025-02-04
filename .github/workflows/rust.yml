@@ -63,11 +63,11 @@ jobs:
           "https://github.com/"
         )
 
-        cargo build --example main
+        cargo build --example parse
 
         for url in "${sites[@]}"; do
           curl -sS $url > out.html
-          if !(target/debug/examples/main out.html --check); then
+          if !(target/debug/examples/parse out.html --check); then
             echo "Could not parse source @ $url"
           fi
         done

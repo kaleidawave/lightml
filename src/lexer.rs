@@ -48,15 +48,12 @@ impl<'a> Lexer<'a> {
 
     // Above modified to allow
     pub fn parse_until_postfix(&mut self, slice: &str, then: &str) -> Result<(&'a str, ()), ()> {
-        let mut consumed: usize = 0;
         let current = self.current();
-        for (idx, chr) in current.char_indices() {
+        for (idx, _chr) in current.char_indices() {
             if current[idx..].starts_with(slice) && current[(idx + slice.len())..].starts_with(then)
             {
-                self.head += consumed as u32 + slice.len() as u32;
-                return Ok((&current[..consumed], ()));
-            } else {
-                consumed += chr.len_utf8();
+                self.head += idx as u32 + slice.len() as u32;
+                return Ok((&current[..idx], ()));
             }
         }
         dbg!("parse until");
