@@ -13,12 +13,18 @@ pub fn inner_text(element: &Element) -> String {
             for child in children {
                 match child {
                     Node::Element(element) => {
+                        let skip_citations = false;
+                        let skip = skip_citations && element.tag_name == "sup";
+                        // TODO check inner is a with [] etc
+                        if skip {
+                            return;
+                        }
                         inner_text_(element, buf);
                     }
                     Node::TextNode(content) => {
                         buf.push_str(&unescape_string_content(content));
                     }
-                    Node::Comment(..) => {}
+                    Node::Comment(..) | Node::MismatchClosingTag(..) => {}
                 }
             }
         }

@@ -73,11 +73,9 @@ impl<'a> Lexer<'a> {
             if let '"' | '\'' = chr {
                 chr
             } else {
-                dbg!();
                 return Err(());
             }
         } else {
-            dbg!();
             return Err(());
         };
         let mut consumed: usize = 0;
@@ -98,7 +96,6 @@ impl<'a> Lexer<'a> {
                 escaped = matches!(chr, '\\');
             }
         }
-        dbg!();
         Err(())
     }
 

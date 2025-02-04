@@ -151,30 +151,19 @@ impl Element {
             });
         }
 
-        let children = children_from_reader(reader)?;
-        if reader.is_operator_advance("</") {
-            let closing_tag_name = reader.parse_identifier("closing tag")?;
-            reader.expect('>')?;
-            if closing_tag_name != tag_name {
-                dbg!("mismatched tag names", closing_tag_name, tag_name, reader.current().get(..20));
-                return Err(());
-                // return Err(ParseError::new(
-                // 	crate::ParseErrors::ClosingTagDoesNotMatch {
-                // 		tag_name: &tag_name,
-                // 		closing_tag_name,
-                // 	},
-                // 	start.with_length(closing_tag_name.len() + 2),
-                // ));
-            }
-            Ok(Element {
-                tag_name,
-                attributes,
-                children: ElementChildren::Children(children),
-            })
-        } else {
-            dbg!();
-            Err(())
-        }
+        let children = children_from_reader(reader, &tag_name)?;
+        // if reader.is_operator_advance("</") {
+        //     let _closing_tag_name = reader.parse_identifier("closing tag")?;
+        //     reader.expect('>')?;
+
+        Ok(Element {
+            tag_name,
+            attributes,
+            children: ElementChildren::Children(children),
+        })
+        // } else {
+        //     Err(())
+        // }
     }
 
     // fn to_string_from_buffer<T: source_map::ToString>(
@@ -211,8 +200,8 @@ impl Element {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Attribute {
-    key: String,
-    value: String,
+    pub key: String,
+    pub value: String,
 }
 
 impl Attribute {
@@ -289,7 +278,11 @@ impl Attribute {
 
 type ParseResult<T> = Result<T, ()>;
 
-fn children_from_reader(reader: &mut crate::Lexer) -> ParseResult<Vec<Node>> {
+/// Also parsing end tag (to account for mismatched end tags)
+fn children_from_reader(
+    reader: &mut crate::Lexer,
+    expected_closing_tag_name: &str,
+) -> ParseResult<Vec<Node>> {
     let mut children = Vec::new();
     // TODO count new lines etc
     loop {
@@ -297,7 +290,15 @@ fn children_from_reader(reader: &mut crate::Lexer) -> ParseResult<Vec<Node>> {
         // for _ in 0..reader.last_was_from_new_line() {
         // 	children.push(Node::LineBreak);
         // }
-        if reader.starts_with_str("</") {
+        if reader.is_operator_advance("</") {
+            if !expected_closing_tag_name.is_empty() {
+                let closing_tag_name = reader.parse_identifier("closing tag")?;
+                reader.expect('>')?;
+                if expected_closing_tag_name != closing_tag_name {
+                    children.push(Node::MismatchClosingTag(closing_tag_name.to_owned()));
+                    continue;
+                }
+            }
             return Ok(children);
         }
         children.push(Node::from_reader(reader)?);
@@ -337,6 +338,7 @@ pub enum Node {
     Element(Element),
     TextNode(String),
     Comment(String),
+    MismatchClosingTag(String),
 }
 
 impl Node {

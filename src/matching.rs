@@ -16,7 +16,7 @@ pub fn query_selector_all<'a>(element: &'a Element, matching: &Selector) -> Vec<
                     Node::Element(element) => {
                         query_selector_all_(element, matching, found);
                     }
-                    Node::TextNode(..) | Node::Comment(..) => {}
+                    Node::TextNode(..) | Node::Comment(..) | Node::MismatchClosingTag(..) => {}
                 }
             }
         }
@@ -40,7 +40,7 @@ pub fn query_selector<'a>(element: &'a Element, matching: &Selector) -> Option<&
                         return v;
                     }
                 }
-                Node::TextNode(..) | Node::Comment(..) => {}
+                Node::TextNode(..) | Node::Comment(..) | Node::MismatchClosingTag(..) => {}
             }
         }
     }
@@ -48,6 +48,7 @@ pub fn query_selector<'a>(element: &'a Element, matching: &Selector) -> Option<&
     None
 }
 
+/// [See selector notation](https://developer.mozilla.org/en-US/docs/Web/CSS/Attribute_selectors)
 #[derive(Debug, Clone, Copy)]
 pub enum AttributeQuery {
     Exactly,
@@ -133,6 +134,7 @@ impl<'a> Selector<'a> {
                                 [b'^', b'=', ..] => (AttributeQuery::Prefixed, 2),
                                 [b'$', b'=', ..] => (AttributeQuery::Suffixed, 2),
                                 [b'|', b'=', ..] => (AttributeQuery::ExactlyBeforeHyphen, 2),
+                                [b'*', b'=', ..] => (AttributeQuery::Contains, 2),
                                 [b'=', ..] => (AttributeQuery::Exactly, 1),
                                 _ => {
                                     todo!("{rest}");
