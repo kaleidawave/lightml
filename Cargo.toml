@@ -1,10 +1,12 @@
 [package]
 name = "lightml"
-description = "Parser for XML and HTML"
+description = "LIGhtweight-HTML parser and with CSS selector interface"
 version = "0.0.2"
 edition = "2021"
 license = "MIT"
 repository = "https://github.com/kaleidawave/lightml"
+keywords = ["HTML", "parser", "selector"]
+categories = ["parsering", "web-programming"]
 
 [lib]
 crate-type = ["cdylib", "rlib"]

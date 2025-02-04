@@ -28,17 +28,35 @@ impl<'a> Lexer<'a> {
         self.current().starts_with(slice)
     }
 
-    pub fn parse_until(&mut self, slice: &str) -> Result<(&'a str, ()), ()> {
+    pub fn parse_until(&mut self, slice: &str, advance: bool) -> Result<(&'a str, ()), ()> {
         let mut consumed: usize = 0;
         let current = self.current();
         for (idx, chr) in current.char_indices() {
             if current[idx..].starts_with(slice) {
-                self.head += consumed as u32; // + slice.len() as u32;
+                self.head += consumed as u32;
+                if advance {
+                    self.head += slice.len() as u32;
+                }
                 return Ok((&current[..consumed], ()));
             } else {
                 consumed += chr.len_utf8();
             }
         }
+        dbg!("parse until", slice);
+        Err(())
+    }
+
+    // Above modified to allow
+    pub fn parse_until_postfix(&mut self, slice: &str, then: &str) -> Result<(&'a str, ()), ()> {
+        let current = self.current();
+        for (idx, _chr) in current.char_indices() {
+            if current[idx..].starts_with(slice) && current[(idx + slice.len())..].starts_with(then)
+            {
+                self.head += idx as u32 + slice.len() as u32;
+                return Ok((&current[..idx], ()));
+            }
+        }
+        dbg!("parse until");
         Err(())
     }
 
@@ -78,10 +96,12 @@ impl<'a> Lexer<'a> {
         Err(())
     }
 
-    pub fn parse_identifier(&mut self, _position: &str, _something: bool) -> Result<&'a str, ()> {
+    pub fn parse_identifier(&mut self, position: &str) -> Result<&'a str, ()> {
         let mut chars = self.current().chars();
         let first = if let Some(chr) = chars.next() {
-            if !chr.is_alphabetic() {
+            let valid = chr.is_alphabetic(); // || matches!(chr, '-' | '_' | '$' | ':');
+            if !valid {
+                dbg!(chr, position, self.head);
                 return Err(());
             } else {
                 chr.len_utf8()
@@ -91,7 +111,13 @@ impl<'a> Lexer<'a> {
         };
         let mut consumed = first;
         for chr in chars {
-            if chr.is_alphanumeric() || matches!(chr, '-' | '_' | '$') {
+            // WIP
+            let is_part_of_value = if let "Attribute value" = position {
+                !(chr.is_whitespace() || matches!(chr, '>'))
+            } else {
+                chr.is_alphanumeric() || matches!(chr, '-' | '_' | '$' | ':')
+            };
+            if is_part_of_value {
                 consumed += chr.len_utf8();
             } else {
                 break;
@@ -118,6 +144,7 @@ impl<'a> Lexer<'a> {
             self.head += chr.len_utf8() as u32;
             Ok(())
         } else {
+            dbg!();
             Err(())
         }
     }
@@ -128,6 +155,7 @@ impl<'a> Lexer<'a> {
             self.head += chr.len_utf8() as u32;
             Ok(())
         } else {
+            dbg!();
             Err(())
         }
     }

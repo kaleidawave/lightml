@@ -5,6 +5,6 @@
 [![docs.rs badge](https://img.shields.io/docsrs/lightml?style=flat-square)](https://docs.rs/lightml/latest)
 ![JSR Version](https://img.shields.io/jsr/v/bengineering/lightml)
 
-LIGHhtweight-HTML parser and with CSS selector interface.
+LIGhtweight-HTML parser and with CSS selector interface.
 
 > Ported from [Ezno JSX parsing](https://github.com/kaleidawave/ezno/blob/main/parser/src/extensions/jsx.rs)

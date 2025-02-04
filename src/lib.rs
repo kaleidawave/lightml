@@ -41,7 +41,10 @@ pub struct Document {
 impl Document {
     pub fn from_reader(reader: &mut crate::Lexer) -> Result<Self, ()> {
         // TODO temp
-        let _ = reader.is_operator_advance("<!DOCTYPE html>");
+        let lowercase = reader.is_operator_advance("<!DOCTYPE html>");
+        if !lowercase {
+            let _ = reader.is_operator_advance("<!doctype html>");
+        }
         Element::from_reader(reader).map(|html_element| Document { html_element })
     }
 }
@@ -49,7 +52,7 @@ impl Document {
 impl Element {
     pub fn from_reader(reader: &mut crate::Lexer) -> Result<Self, ()> {
         reader.expect_start('<')?;
-        let tag_name = reader.parse_identifier("Element name", false)?.to_owned();
+        let tag_name = reader.parse_identifier("Element name")?.to_owned();
         let mut attributes = Vec::new();
         // TODO spread attributes
         // Kind of weird / not clear conditions for breaking out of while loop
@@ -68,9 +71,7 @@ impl Element {
             } else {
                 // TODO extras here @ etc
                 // let start = reader.get_start();
-                let key = reader
-                    .parse_identifier("Element attribute", false)?
-                    .to_owned();
+                let key = reader.parse_identifier("Element attribute")?.to_owned();
                 let attribute = if reader.is_operator_advance("=") {
                     // let start = reader.get_start();
                     if reader.starts_with_string_delimeter() {
@@ -82,14 +83,20 @@ impl Element {
                             value: content.to_owned(),
                         }
                     } else {
-                        return Err(());
-                        // let error_position = start.with_length(
-                        // 	crate::lexer::utilities::next_empty_occurance(reader.get_current()),
-                        // );
-                        // return Err(ParseError::new(
-                        // 	ParseErrors::ExpectedAttribute,
-                        // 	error_position,
-                        // ));
+                        let content = reader.parse_identifier("Attribute value")?.to_owned();
+                        Attribute {
+                            key,
+                            value: content.to_owned(),
+                        }
+                        // else {
+                        //     dbg!(reader.current().get(..20));
+                        //     return Err(());
+                        //     // let error_position = start.with_length(
+                        //     // 	crate::lexer::utilities::next_empty_occurance(reader.get_current()),
+                        //     // );
+                        //     // return Err(ParseError::new(
+                        //     // 	ParseErrors::ExpectedAttribute,
+                        //     // 	error_position,
                     }
                 } else {
                     // Boolean attribute
@@ -110,21 +117,22 @@ impl Element {
             });
         } else if html_tag_contains_literal_content(&tag_name) {
             // TODO could embedded parser?
+            // TODO I think this should take into account strings and more
             let (content, _) = reader
-                .parse_until("</")
+                .parse_until_postfix("</", &tag_name)
                 .map_err(|()| {
+                    dbg!("lit content");
                     // TODO might be a problem
                     // let position = reader.get_start().with_length(reader.get_current().len());
                     // ParseError::new(crate::ParseErrors::UnexpectedEnd, position)
                 })?
                 .to_owned();
 
-            reader.advance("</".len() as u32);
-
             let content = content.to_owned();
 
-            let closing_tag_name = reader.parse_identifier("Closing tag", false)?;
+            let closing_tag_name = reader.parse_identifier("Closing tag")?;
             if tag_name != closing_tag_name {
+                dbg!(content, tag_name, closing_tag_name);
                 return Err(());
                 // return Err(ParseError::new(
                 // 	crate::ParseErrors::ClosingTagDoesNotMatch {
@@ -143,28 +151,19 @@ impl Element {
             });
         }
 
-        let children = children_from_reader(reader)?;
-        if reader.is_operator_advance("</") {
-            let closing_tag_name = reader.parse_identifier("closing tag", false)?;
-            reader.expect('>')?;
-            if closing_tag_name != tag_name {
-                return Err(());
-                // return Err(ParseError::new(
-                // 	crate::ParseErrors::ClosingTagDoesNotMatch {
-                // 		tag_name: &tag_name,
-                // 		closing_tag_name,
-                // 	},
-                // 	start.with_length(closing_tag_name.len() + 2),
-                // ));
-            }
-            Ok(Element {
-                tag_name,
-                attributes,
-                children: ElementChildren::Children(children),
-            })
-        } else {
-            Err(())
-        }
+        let children = children_from_reader(reader, &tag_name)?;
+        // if reader.is_operator_advance("</") {
+        //     let _closing_tag_name = reader.parse_identifier("closing tag")?;
+        //     reader.expect('>')?;
+
+        Ok(Element {
+            tag_name,
+            attributes,
+            children: ElementChildren::Children(children),
+        })
+        // } else {
+        //     Err(())
+        // }
     }
 
     // fn to_string_from_buffer<T: source_map::ToString>(
@@ -201,8 +200,8 @@ impl Element {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Attribute {
-    key: String,
-    value: String,
+    pub key: String,
+    pub value: String,
 }
 
 impl Attribute {
@@ -218,9 +217,7 @@ impl Attribute {
 
     fn _from_reader(reader: &mut crate::Lexer) -> Result<Self, ()> {
         // let start = reader.get_start();
-        let key = reader
-            .parse_identifier("Element attribute", false)?
-            .to_owned();
+        let key = reader.parse_identifier("Element attribute")?.to_owned();
         if reader.is_operator_advance("=") {
             if reader.starts_with_string_delimeter() {
                 let (content, _quoted) = reader.parse_string_literal()?;
@@ -232,6 +229,7 @@ impl Attribute {
                 // let error_position = start.with_length(
                 // 	crate::lexer::utilities::next_empty_occurance(reader.get_current()),
                 // );
+                dbg!();
                 Err(())
                 // Err(ParseError::new(ParseErrors::ExpectedAttribute, error_position))
             }
@@ -280,7 +278,11 @@ impl Attribute {
 
 type ParseResult<T> = Result<T, ()>;
 
-fn children_from_reader(reader: &mut crate::Lexer) -> ParseResult<Vec<Node>> {
+/// Also parsing end tag (to account for mismatched end tags)
+fn children_from_reader(
+    reader: &mut crate::Lexer,
+    expected_closing_tag_name: &str,
+) -> ParseResult<Vec<Node>> {
     let mut children = Vec::new();
     // TODO count new lines etc
     loop {
@@ -288,7 +290,15 @@ fn children_from_reader(reader: &mut crate::Lexer) -> ParseResult<Vec<Node>> {
         // for _ in 0..reader.last_was_from_new_line() {
         // 	children.push(Node::LineBreak);
         // }
-        if reader.starts_with_str("</") {
+        if reader.is_operator_advance("</") {
+            if !expected_closing_tag_name.is_empty() {
+                let closing_tag_name = reader.parse_identifier("closing tag")?;
+                reader.expect('>')?;
+                if expected_closing_tag_name != closing_tag_name {
+                    children.push(Node::MismatchClosingTag(closing_tag_name.to_owned()));
+                    continue;
+                }
+            }
             return Ok(children);
         }
         children.push(Node::from_reader(reader)?);
@@ -328,6 +338,7 @@ pub enum Node {
     Element(Element),
     TextNode(String),
     Comment(String),
+    MismatchClosingTag(String),
 }
 
 impl Node {
@@ -357,13 +368,13 @@ impl Node {
             // 	let position = reader.get_start().with_length(reader.get_current().len());
             // 	ParseError::new(crate::ParseErrors::UnexpectedEnd, position)
             // })?
-            let (content, _) = reader.parse_until("-->")?.to_owned();
+            let (content, _) = reader.parse_until("-->", true)?.to_owned();
             Ok(Node::Comment(content.to_owned()))
         } else if reader.starts_with_str("<") {
             let element = Element::from_reader(reader)?;
             Ok(Node::Element(element))
         } else {
-            let (content, _) = reader.parse_until("<")?;
+            let (content, _) = reader.parse_until("<", false)?;
             // .map_err(|()| {
             // 	// TODO might be a problem
             // 	let position = reader.get_start().with_length(reader.get_current().len());
@@ -439,8 +450,9 @@ pub fn retrieve(content: String, query: String) -> String {
         matching::{query_selector, query_selector_all, Selector},
         operations::inner_text,
     };
-    let result = Document::from_reader(&mut Lexer::new(&content));
-    let document = result.unwrap();
+    let mut lexer = Lexer::new(&content);
+    let result = Document::from_reader(&mut lexer);
+    let document = result.expect("failed to parse document");
     let mut current: Vec<&Element> = vec![&document.html_element];
     for query in query.split('\0') {
         if let Some(selector) = query.strip_prefix("single ") {

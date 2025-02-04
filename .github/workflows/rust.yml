@@ -49,8 +49,28 @@ jobs:
       with:
         path: ${{ env.CACHE_PATHS }}
         key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
     - name: Run all tests
       run: cargo test --workspace --verbose --all-features
+      shell: bash
+
+    - name: Run some examples
+      shell: bash
+      run: |
+        sites=(
+          "https://www.bbc.co.uk/news"
+          "https://en.wikipedia.org/wiki/Main_Page"
+          "https://github.com/"
+        )
+
+        cargo build --example parse
+
+        for url in "${sites[@]}"; do
+          curl -sS $url > out.html
+          if !(target/debug/examples/parse out.html --check); then
+            echo "Could not parse source @ $url"
+          fi
+        done
 
   clippy:
     needs: validity
