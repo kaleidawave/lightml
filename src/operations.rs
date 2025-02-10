@@ -6,7 +6,7 @@ use super::*;
 */
 pub fn inner_text(element: &Element) -> String {
     fn inner_text_(element: &Element, buf: &mut String) {
-        if let "math" | "svg" | "title" = element.tag_name.as_str() {
+        if let "math" | "svg" | "title" = element.tag_name {
             return;
         }
         if let ElementChildren::Children(ref children) = element.children {

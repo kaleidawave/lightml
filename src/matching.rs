@@ -1,10 +1,13 @@
 use super::{Attribute, Element, ElementChildren, Node};
 
-pub fn query_selector_all<'a>(element: &'a Element, matching: &Selector) -> Vec<&'a Element> {
-    fn query_selector_all_<'a>(
-        element: &'a Element,
+pub fn query_selector_all<'a, 'b>(
+    element: &'a Element<'b>,
+    matching: &Selector,
+) -> Vec<&'a Element<'b>> {
+    fn query_selector_all_<'a, 'b>(
+        element: &'a Element<'b>,
         matching: &Selector,
-        found: &mut Vec<&'a Element>,
+        found: &mut Vec<&'a Element<'b>>,
     ) {
         if matches(element, matching) {
             found.push(element);
@@ -27,7 +30,10 @@ pub fn query_selector_all<'a>(element: &'a Element, matching: &Selector) -> Vec<
     found
 }
 
-pub fn query_selector<'a>(element: &'a Element, matching: &Selector) -> Option<&'a Element> {
+pub fn query_selector<'a>(
+    element: &'a Element<'a>,
+    matching: &Selector,
+) -> Option<&'a Element<'a>> {
     if matches(element, matching) {
         return Some(element);
     }
@@ -187,9 +193,7 @@ pub fn matches(element: &Element, selector: &Selector) -> bool {
                 match kind {
                     AttributeQuery::Exactly => value == expected_value,
                     AttributeQuery::ExactlyBeforeHyphen => {
-                        let value: &str = value
-                            .split_once("-")
-                            .map_or(value.as_str(), |(left, _)| left);
+                        let value: &str = value.split_once("-").map_or(value, |(left, _)| left);
                         value == *expected_value
                     }
                     AttributeQuery::Contains => value.contains(expected_value),
