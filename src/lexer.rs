@@ -28,6 +28,7 @@ impl<'a> Lexer<'a> {
         self.current().starts_with(slice)
     }
 
+    // TODO after method
     pub fn parse_until(&mut self, slice: &str, advance: bool) -> Result<(&'a str, ()), ()> {
         let mut consumed: usize = 0;
         let current = self.current();
@@ -61,7 +62,17 @@ impl<'a> Lexer<'a> {
     }
 
     pub fn current(&self) -> &'a str {
-        &self.on[self.head as usize..]
+        self.current_with_offset(0)
+    }
+
+    pub fn consumed(self) -> u32 {
+        self.head
+    }
+
+    // TOD 
+    pub fn current_with_offset(&self, offset: u32) -> &'a str {
+        unsafe { self.on.get_unchecked((self.head + offset) as usize..) }
+        // &self.on[self.head as usize..]
     }
 
     pub fn parse_string_literal(&mut self) -> Result<(&'a str, ()), ()> {
@@ -129,23 +140,12 @@ impl<'a> Lexer<'a> {
     }
 
     pub fn skip(&mut self) {
-        for chr in self.on[self.head as usize..].chars() {
-            if chr.is_whitespace() {
-                self.head += chr.len_utf8() as u32;
-            } else {
+        let mut bytes = self.current().bytes().enumerate();
+        while let Some((idx, byte)) = bytes.next() {
+            if !byte.is_ascii_whitespace() {
+                self.head += idx as u32;
                 break;
             }
-        }
-    }
-
-    pub fn expect_start(&mut self, chr: char) -> Result<(), ()> {
-        self.skip();
-        if self.current().starts_with(chr) {
-            self.head += chr.len_utf8() as u32;
-            Ok(())
-        } else {
-            dbg!();
-            Err(())
         }
     }
 
@@ -155,7 +155,7 @@ impl<'a> Lexer<'a> {
             self.head += chr.len_utf8() as u32;
             Ok(())
         } else {
-            dbg!();
+            dbg!(self.current().get(..10), chr);
             Err(())
         }
     }

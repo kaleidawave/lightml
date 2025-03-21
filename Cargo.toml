@@ -6,7 +6,7 @@ edition = "2021"
 license = "MIT"
 repository = "https://github.com/kaleidawave/lightml"
 keywords = ["HTML", "parser", "selector"]
-categories = ["parsering", "web-programming"]
+categories = ["parsing", "web-programming"]
 
 [lib]
 crate-type = ["cdylib", "rlib"]

@@ -134,7 +134,7 @@ impl<'a> Document<'a> {
 
 impl<'a> Element<'a> {
     pub fn from_reader(reader: &mut crate::Lexer<'a>) -> Result<Self, ()> {
-        reader.expect_start('<')?;
+        reader.expect('<')?;
         let tag_name = reader.parse_identifier("Element name")?;
         let mut attributes = Vec::new();
         // TODO spread attributes
@@ -242,6 +242,13 @@ impl<'a> Element<'a> {
         // } else {
         //     Err(())
         // }
+    }
+
+    /// Also returns how many bytes parsed
+    pub fn from_string(content: &'a str) -> Result<(Self, u32), ()> {
+        let mut lexer = Lexer::new(content);
+        let element = Self::from_reader(&mut lexer)?;
+        Ok((element, lexer.consumed()))
     }
 
     // fn to_string_from_buffer<T: source_map::ToString>(
