@@ -36,10 +36,17 @@ impl<'a> Lexer<'a> {
         let current = self.current();
         let mut consumed: usize = 0;
         let mut in_code_block = false;
-
+        let mut escaped = false;
         for (idx, chr) in current.char_indices() {
-            if quote_escape && '`' == chr {
-                in_code_block = !in_code_block;
+            if quote_escape {
+                if '`' == chr && !escaped {
+                    in_code_block = !in_code_block;
+                }
+                if escaped {
+                    escaped = false;
+                } else {
+                    escaped = '\\' == chr;
+                }
             }
 
             if !in_code_block && current[idx..].starts_with(slice) {
