@@ -257,30 +257,7 @@ impl<'a> Element<'a> {
     // 	options: &crate::ToStringOptions,
     // 	local: crate::LocalToStringInformation,
     // ) {
-    // 	buf.push('<');
-    // 	buf.push_str(&self.tag_name);
-    // 	for attribute in &self.attributes {
-    // 		buf.push(' ');
-    // 		attribute.to_string_from_buffer(buf, options, local);
-    // 	}
-    // 	buf.push('>');
-
-    // 	match self.children {
-    // 		ElementChildren::Children(ref children) => {
-    // 			_children_to_string(children, buf, options, local);
-    // 			buf.push_str("</");
-    // 			buf.push_str(&self.tag_name);
-    // 			buf.push('>');
-    // 		}
-    // 		ElementChildren::SelfClosing => {}
-    // 		ElementChildren::Literal(ref content) => {
-    // 			buf.push_str(content);
-    // 			buf.push_str("</");
-    // 			buf.push_str(&self.tag_name);
-    // 			buf.push('>');
-    // 		}
-    // 	}
-    // }
+    //
 }
 
 #[derive(Debug, Clone, PartialEq)]

@@ -30,10 +30,19 @@ impl<'a> Lexer<'a> {
 
     // TODO after method
     pub fn parse_until(&mut self, slice: &str, advance: bool) -> Result<(&'a str, ()), ()> {
-        let mut consumed: usize = 0;
+        // TODO pass as argument
+        let quote_escape = true;
+
         let current = self.current();
+        let mut consumed: usize = 0;
+        let mut in_code_block = false;
+
         for (idx, chr) in current.char_indices() {
-            if current[idx..].starts_with(slice) {
+            if quote_escape && '`' == chr {
+                in_code_block = !in_code_block;
+            }
+
+            if !in_code_block && current[idx..].starts_with(slice) {
                 self.head += consumed as u32;
                 if advance {
                     self.head += slice.len() as u32;
@@ -69,7 +78,6 @@ impl<'a> Lexer<'a> {
         self.head
     }
 
-    // TOD 
     pub fn current_with_offset(&self, offset: u32) -> &'a str {
         unsafe { self.on.get_unchecked((self.head + offset) as usize..) }
         // &self.on[self.head as usize..]
