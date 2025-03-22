@@ -8,6 +8,21 @@ mod lexer;
 pub mod matching;
 pub mod operations;
 
+type ParseResult<T> = Result<T, HTMLParseError>;
+
+#[derive(Debug, Clone, Copy)]
+pub struct HTMLParseError {
+    pub reason: HTMLParseErrorReason,
+    pub at: u32,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum HTMLParseErrorReason {
+    Expected { slice: &'static str },
+    NoEndToStringDelimeter,
+    InvalidIdentifier,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Node<'a> {
     Element(Element<'a>),
@@ -26,7 +41,7 @@ impl<'a> Node<'a> {
     // 	}
     // }
 
-    fn from_reader(reader: &mut crate::Lexer<'a>) -> Result<Self, ()> {
+    fn from_reader(reader: &mut crate::Lexer<'a>) -> ParseResult<Self> {
         reader.skip();
         // let start = reader.get_start();
         // if reader.is_operator_advance("{") {
@@ -43,13 +58,24 @@ impl<'a> Node<'a> {
             // 	let position = reader.get_start().with_length(reader.get_current().len());
             // 	ParseError::new(crate::ParseErrors::UnexpectedEnd, position)
             // })?
-            let (content, _) = reader.parse_until("-->", true)?;
+            let content = reader
+                .parse_until("-->", true)
+                .map_err(|at| HTMLParseError {
+                    reason: HTMLParseErrorReason::Expected { slice: "-->" },
+                    at,
+                })?;
             Ok(Node::Comment(content))
         } else if reader.starts_with_str("<") {
             let element = Element::from_reader(reader)?;
             Ok(Node::Element(element))
         } else {
-            let (content, _) = reader.parse_until("<", false)?;
+            let content = reader
+                .parse_until("<", false)
+                .map_err(|at| HTMLParseError {
+                    reason: HTMLParseErrorReason::Expected { slice: "<" },
+                    at,
+                })?;
+            // dbg!(content.char_indices().filter(|(_, chr)| *chr == '`').collect::<Vec<_>>());
             // .map_err(|()| {
             // 	// TODO might be a problem
             // 	let position = reader.get_start().with_length(reader.get_current().len());
@@ -122,7 +148,7 @@ pub struct Document<'a> {
 }
 
 impl<'a> Document<'a> {
-    pub fn from_reader(reader: &mut crate::Lexer<'a>) -> Result<Self, ()> {
+    pub fn from_reader(reader: &mut crate::Lexer<'a>) -> ParseResult<Self> {
         // TODO temp
         let lowercase = reader.is_operator_advance("<!DOCTYPE html>");
         if !lowercase {
@@ -133,9 +159,17 @@ impl<'a> Document<'a> {
 }
 
 impl<'a> Element<'a> {
-    pub fn from_reader(reader: &mut crate::Lexer<'a>) -> Result<Self, ()> {
-        reader.expect('<')?;
-        let tag_name = reader.parse_identifier("Element name")?;
+    pub fn from_reader(reader: &mut crate::Lexer<'a>) -> ParseResult<Self> {
+        reader.expect('<').map_err(|at| HTMLParseError {
+            reason: HTMLParseErrorReason::Expected { slice: "<" },
+            at,
+        })?;
+        let tag_name = reader
+            .parse_identifier("Element name")
+            .map_err(|at| HTMLParseError {
+                reason: HTMLParseErrorReason::InvalidIdentifier,
+                at,
+            })?;
         let mut attributes = Vec::new();
         // TODO spread attributes
         // Kind of weird / not clear conditions for breaking out of while loop
@@ -154,19 +188,32 @@ impl<'a> Element<'a> {
             } else {
                 // TODO extras here @ etc
                 // let start = reader.get_start();
-                let key = reader.parse_identifier("Element attribute")?;
+                let key =
+                    reader
+                        .parse_identifier("Element attribute")
+                        .map_err(|at| HTMLParseError {
+                            reason: HTMLParseErrorReason::InvalidIdentifier,
+                            at,
+                        })?;
                 let attribute = if reader.is_operator_advance("=") {
                     // let start = reader.get_start();
                     if reader.starts_with_string_delimeter() {
-                        // TODO _quoted
-                        let (content, _quoted) = reader.parse_string_literal()?;
-                        // let position = start.with_length(content.len() + 2);
+                        let content =
+                            reader.parse_string_literal().map_err(|at| HTMLParseError {
+                                reason: HTMLParseErrorReason::NoEndToStringDelimeter,
+                                at,
+                            })?;
                         Attribute {
                             key,
                             value: content,
                         }
                     } else {
-                        let content = reader.parse_identifier("Attribute value")?;
+                        let content = reader.parse_identifier("Attribute value").map_err(|at| {
+                            HTMLParseError {
+                                reason: HTMLParseErrorReason::InvalidIdentifier,
+                                at,
+                            }
+                        })?;
                         Attribute {
                             key,
                             value: content,
@@ -201,26 +248,34 @@ impl<'a> Element<'a> {
         } else if html_tag_contains_literal_content(tag_name) {
             // TODO could embedded parser?
             // TODO I think this should take into account strings and more
-            let (content, _) = reader.parse_until_postfix("</", tag_name).map_err(|()| {
-                dbg!("lit content");
+            let content = reader.parse_until_postfix("</", tag_name).map_err(|at| {
+                HTMLParseError {
+                    reason: HTMLParseErrorReason::Expected { slice: "</" },
+                    at,
+                }
                 // TODO might be a problem
                 // let position = reader.get_start().with_length(reader.get_current().len());
                 // ParseError::new(crate::ParseErrors::UnexpectedEnd, position)
             })?;
 
-            let closing_tag_name = reader.parse_identifier("Closing tag")?;
-            if tag_name != closing_tag_name {
-                dbg!(content, tag_name, closing_tag_name);
-                return Err(());
-                // return Err(ParseError::new(
-                // 	crate::ParseErrors::ClosingTagDoesNotMatch {
-                // 		tag_name: &tag_name,
-                // 		closing_tag_name,
-                // 	},
-                // 	start.with_length(closing_tag_name.len() + 2),
-                // ));
+            // TODO is this the best way?
+            while !reader.is_finished() {
+                let closing_tag_name =
+                    reader
+                        .parse_identifier("Closing tag")
+                        .map_err(|at| HTMLParseError {
+                            reason: HTMLParseErrorReason::InvalidIdentifier,
+                            at,
+                        })?;
+                if tag_name == closing_tag_name {
+                    break;
+                }
             }
-            reader.expect('>')?;
+
+            reader.expect('>').map_err(|at| HTMLParseError {
+                reason: HTMLParseErrorReason::Expected { slice: "</" },
+                at,
+            })?;
             let children = ElementChildren::Literal(content);
             return Ok(Element {
                 tag_name,
@@ -245,7 +300,7 @@ impl<'a> Element<'a> {
     }
 
     /// Also returns how many bytes parsed
-    pub fn from_string(content: &'a str) -> Result<(Self, u32), ()> {
+    pub fn from_string(content: &'a str) -> ParseResult<(Self, u32)> {
         let mut lexer = Lexer::new(content);
         let element = Self::from_reader(&mut lexer)?;
         Ok((element, lexer.consumed()))
@@ -277,12 +332,20 @@ impl<'a> Attribute<'a> {
     // 	}
     // }
 
-    fn _from_reader(reader: &mut crate::Lexer<'a>) -> Result<Self, ()> {
+    fn _from_reader(reader: &mut crate::Lexer<'a>) -> ParseResult<Self> {
         // let start = reader.get_start();
-        let key = reader.parse_identifier("Element attribute")?;
+        let key = reader
+            .parse_identifier("Element attribute")
+            .map_err(|at| HTMLParseError {
+                reason: HTMLParseErrorReason::InvalidIdentifier,
+                at,
+            })?;
         if reader.is_operator_advance("=") {
             if reader.starts_with_string_delimeter() {
-                let (content, _quoted) = reader.parse_string_literal()?;
+                let content = reader.parse_string_literal().map_err(|at| HTMLParseError {
+                    reason: HTMLParseErrorReason::NoEndToStringDelimeter,
+                    at,
+                })?;
                 Ok(Attribute {
                     key,
                     value: content,
@@ -291,8 +354,13 @@ impl<'a> Attribute<'a> {
                 // let error_position = start.with_length(
                 // 	crate::lexer::utilities::next_empty_occurance(reader.get_current()),
                 // );
-                dbg!();
-                Err(())
+                let at = reader.consumed();
+                Err(HTMLParseError {
+                    reason: HTMLParseErrorReason::Expected {
+                        slice: "string delimeter",
+                    },
+                    at,
+                })
                 // Err(ParseError::new(ParseErrors::ExpectedAttribute, error_position))
             }
         } else {
@@ -338,8 +406,6 @@ impl<'a> Attribute<'a> {
     // }
 }
 
-type ParseResult<T> = Result<T, ()>;
-
 /// Also parsing end tag (to account for mismatched end tags)
 fn children_from_reader<'a>(
     reader: &mut crate::Lexer<'a>,
@@ -354,8 +420,17 @@ fn children_from_reader<'a>(
         // }
         if reader.is_operator_advance("</") {
             if !expected_closing_tag_name.is_empty() {
-                let closing_tag_name = reader.parse_identifier("closing tag")?;
-                reader.expect('>')?;
+                let closing_tag_name =
+                    reader
+                        .parse_identifier("closing tag")
+                        .map_err(|at| HTMLParseError {
+                            reason: HTMLParseErrorReason::InvalidIdentifier,
+                            at,
+                        })?;
+                reader.expect('>').map_err(|at| HTMLParseError {
+                    reason: HTMLParseErrorReason::Expected { slice: ">" },
+                    at,
+                })?;
                 if expected_closing_tag_name != closing_tag_name {
                     children.push(Node::MismatchClosingTag(closing_tag_name));
                     continue;
@@ -423,16 +498,29 @@ pub fn html_tag_is_self_closing(tag_name: &str) -> bool {
     )
 }
 
+pub fn parse_head(content: &str) -> ParseResult<Element> {
+    let mut reader = Lexer::new(content);
+    let lowercase = reader.is_operator_advance("<!DOCTYPE html>");
+    if !lowercase {
+        let _ = reader.is_operator_advance("<!doctype html>");
+    }
+    let _ = reader.is_operator_advance("<html>");
+    Element::from_reader(&mut reader)
+}
+
 #[cfg_attr(target_family = "wasm", wasm_bindgen::prelude::wasm_bindgen)]
 pub fn retrieve(content: String, query: String) -> String {
     use crate::{
         matching::{query_selector, query_selector_all, Selector},
         operations::inner_text,
     };
-    let mut lexer = Lexer::new(&content);
-    let result = Document::from_reader(&mut lexer);
+
+    let mut reader = Lexer::new(&content);
+    let result = Document::from_reader(&mut reader);
     let document = result.expect("failed to parse document");
+
     let mut current: Vec<&Element> = vec![&document.html_element];
+
     for query in query.split('\0') {
         if let Some(selector) = query.strip_prefix("single ") {
             let selector = Selector::from_string(selector.trim());

@@ -28,61 +28,92 @@ impl<'a> Lexer<'a> {
         self.current().starts_with(slice)
     }
 
-    // TODO after method
-    pub fn parse_until(&mut self, slice: &str, advance: bool) -> Result<(&'a str, ()), ()> {
-        // TODO pass as argument
-        let quote_escape = true;
-
+    pub fn parse_until(&mut self, slice: &str, advance: bool) -> Result<&'a str, u32> {
         let current = self.current();
-        let mut consumed: usize = 0;
-        let mut in_code_block = false;
-        let mut escaped = false;
-        for (idx, chr) in current.char_indices() {
-            if quote_escape {
-                if '`' == chr && !escaped {
-                    in_code_block = !in_code_block;
-                }
+        let start = self.head;
+
+        // None = None, Some(true) = ```, Some(false) = `
+        #[cfg(feature = "markdown_code_blocks_in_html")]
+        let (mut in_code_block, mut escaped) = (None, false);
+
+        let mut chars = current.char_indices();
+
+        #[allow(unused, clippy::while_let_on_iterator)]
+        while let Some((idx, _chr)) = chars.next() {
+            #[cfg(feature = "markdown_code_blocks_in_html")]
+            {
+                // dbg!(idx, &current[idx..], escaped, &in_code_block);
+
                 if escaped {
                     escaped = false;
+                    continue;
                 } else {
-                    escaped = '\\' == chr;
+                    escaped = '\\' == _chr;
+                }
+
+                if let '`' = _chr {
+                    if let Some(false) = in_code_block {
+                        in_code_block = None;
+                        continue;
+                    }
+
+                    let in_block = current[idx..].starts_with("```");
+                    if in_block {
+                        "``".chars().for_each(|_| {
+                            chars.next();
+                        });
+
+                        if let Some(true) = in_code_block {
+                            in_code_block = None;
+                        } else {
+                            in_code_block = Some(true);
+                        }
+                    } else if let None = in_code_block {
+                        in_code_block = Some(false);
+                    }
+                }
+
+                if in_code_block.is_some() {
+                    continue;
                 }
             }
 
-            if !in_code_block && current[idx..].starts_with(slice) {
-                self.head += consumed as u32;
+            if current[idx..].starts_with(slice) {
+                self.head += idx as u32;
                 if advance {
                     self.head += slice.len() as u32;
                 }
-                return Ok((&current[..consumed], ()));
-            } else {
-                consumed += chr.len_utf8();
+                return Ok(&current[..idx]);
             }
         }
-        dbg!("parse until", slice);
-        Err(())
+
+        Err(start)
     }
 
-    // Above modified to allow
-    pub fn parse_until_postfix(&mut self, slice: &str, then: &str) -> Result<(&'a str, ()), ()> {
+    // Above modified to check `then`
+    pub fn parse_until_postfix(&mut self, slice: &str, then: &str) -> Result<&'a str, u32> {
         let current = self.current();
+        let start = self.head;
         for (idx, _chr) in current.char_indices() {
             if current[idx..].starts_with(slice) && current[(idx + slice.len())..].starts_with(then)
             {
                 self.head += idx as u32 + slice.len() as u32;
-                return Ok((&current[..idx], ()));
+                return Ok(&current[..idx]);
             }
         }
-        dbg!("parse until");
-        Err(())
+        Err(start)
     }
 
     pub fn current(&self) -> &'a str {
         self.current_with_offset(0)
     }
 
-    pub fn consumed(self) -> u32 {
+    pub fn consumed(&self) -> u32 {
         self.head
+    }
+
+    pub fn is_finished(&self) -> bool {
+        self.head as usize == self.on.len()
     }
 
     pub fn current_with_offset(&self, offset: u32) -> &'a str {
@@ -90,17 +121,20 @@ impl<'a> Lexer<'a> {
         // &self.on[self.head as usize..]
     }
 
-    pub fn parse_string_literal(&mut self) -> Result<(&'a str, ()), ()> {
+    pub fn parse_string_literal(&mut self) -> Result<&'a str, u32> {
         let mut chars = self.current().chars();
-        let start = if let Some(chr) = chars.next() {
+        let start = self.head;
+
+        let delimeter = if let Some(chr) = chars.next() {
             if let '"' | '\'' = chr {
                 chr
             } else {
-                return Err(());
+                return Err(start);
             }
         } else {
-            return Err(());
+            return Err(start);
         };
+
         let mut consumed: usize = 0;
         let mut escaped = false;
         for chr in chars {
@@ -111,52 +145,43 @@ impl<'a> Lexer<'a> {
                 escaped = false;
                 continue;
             }
-            if chr == start {
+
+            if chr == delimeter {
                 let slice = &self.on[(self.head as usize + 1)..(self.head as usize + consumed)];
                 self.head += consumed as u32 + 1;
-                return Ok((slice, ()));
+                return Ok(slice);
             } else {
                 escaped = matches!(chr, '\\');
             }
         }
-        Err(())
+        Err(start)
     }
 
-    pub fn parse_identifier(&mut self, position: &str) -> Result<&'a str, ()> {
-        let mut chars = self.current().chars();
-        let first = if let Some(chr) = chars.next() {
-            let valid = chr.is_alphabetic(); // || matches!(chr, '-' | '_' | '$' | ':');
-            if !valid {
-                dbg!(chr, position, self.head);
-                return Err(());
-            } else {
-                chr.len_utf8()
-            }
-        } else {
-            return Err(());
-        };
-        let mut consumed = first;
-        for chr in chars {
+    pub fn parse_identifier(&mut self, position: &str) -> Result<&'a str, u32> {
+        let current = self.current();
+        let chars = current.char_indices();
+        let start = self.head;
+
+        for (idx, chr) in chars {
             // WIP
             let is_part_of_value = if let "Attribute value" = position {
                 !(chr.is_whitespace() || matches!(chr, '>'))
             } else {
                 chr.is_alphanumeric() || matches!(chr, '-' | '_' | '$' | ':')
             };
-            if is_part_of_value {
-                consumed += chr.len_utf8();
-            } else {
-                break;
+
+            if !is_part_of_value {
+                let slice = &current[..idx];
+                self.head += idx as u32;
+                return if let 0 = idx { Err(start) } else { Ok(slice) };
             }
         }
-        let slice = &self.on[(self.head as usize)..(self.head as usize + consumed)];
-        self.head += consumed as u32;
-        Ok(slice)
+        Err(start)
     }
 
     pub fn skip(&mut self) {
-        let mut bytes = self.current().bytes().enumerate();
-        while let Some((idx, byte)) = bytes.next() {
+        let bytes = self.current().bytes().enumerate();
+        for (idx, byte) in bytes {
             if !byte.is_ascii_whitespace() {
                 self.head += idx as u32;
                 break;
@@ -164,14 +189,13 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    pub fn expect(&mut self, chr: char) -> Result<(), ()> {
+    pub fn expect(&mut self, chr: char) -> Result<(), u32> {
         self.skip();
         if self.current().starts_with(chr) {
             self.head += chr.len_utf8() as u32;
             Ok(())
         } else {
-            dbg!(self.current().get(..10), chr);
-            Err(())
+            Err(self.head)
         }
     }
 

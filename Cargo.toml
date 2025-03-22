@@ -8,6 +8,9 @@ repository = "https://github.com/kaleidawave/lightml"
 keywords = ["HTML", "parser", "selector"]
 categories = ["parsing", "web-programming"]
 
+[features]
+markdown_code_blocks_in_html = []
+
 [lib]
 crate-type = ["cdylib", "rlib"]
 
