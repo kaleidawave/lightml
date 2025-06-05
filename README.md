@@ -1,6 +1,6 @@
 # Lightml
 
-![lines of code](https://kaleidawave-projectinformation.web.val.run/project/lightml/badge)
+![lines of code](https://project-information-kaleidawave.val.run/project/lightml/badge)
 [![crates.io badge](https://img.shields.io/crates/v/lightml?style=flat-square)](https://crates.io/crates/lightml)
 [![docs.rs badge](https://img.shields.io/docsrs/lightml?style=flat-square)](https://docs.rs/lightml/latest)
 ![JSR Version](https://img.shields.io/jsr/v/bengineering/lightml)
