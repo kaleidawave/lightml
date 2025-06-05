@@ -1,4 +1,29 @@
-use super::{Attribute, Element, ElementChildren, Node};
+use super::{Attribute, Children, Element, ElementChildren, Node};
+
+pub trait Matcher {
+    fn extract<'a, 'b>(self, children: &'b Children<'a>) -> Option<&'b Node<'a>>;
+}
+
+impl Matcher for usize {
+    fn extract<'a, 'b>(self, children: &'b Children<'a>) -> Option<&'b Node<'a>> {
+        children.get(self)
+    }
+}
+
+pub struct TagName<'a>(pub &'a str);
+
+impl<'m> Matcher for TagName<'m> {
+    fn extract<'a, 'b>(self, children: &'b Children<'a>) -> Option<&'b Node<'a>> {
+        for child in children {
+            if let Node::Element(element) = child {
+                if element.tag_name == self.0 {
+                    return Some(child);
+                }
+            }
+        }
+        None
+    }
+}
 
 pub fn query_selector_all<'a, 'b>(
     element: &'a Element<'b>,
@@ -109,7 +134,12 @@ impl<'a> Selector<'a> {
                         }
                     }
                     idx += len;
-                    attributes.push(("class", AttributeQuery::Exactly, &rest[..len]));
+                    // important `ContainsWhitespaceSplit` not `Exactly`
+                    attributes.push((
+                        "class",
+                        AttributeQuery::ContainsWhitespaceSplit,
+                        &rest[..len],
+                    ));
                 }
                 '#' => {
                     let mut len = rest.len();

@@ -23,8 +23,7 @@ impl<'a> Lexer<'a> {
         self.current().starts_with(['"', '\''])
     }
 
-    pub fn starts_with_str(&mut self, slice: &str) -> bool {
-        self.skip();
+    pub fn starts_with_no_advance(&mut self, slice: &str) -> bool {
         self.current().starts_with(slice)
     }
 
@@ -164,8 +163,13 @@ impl<'a> Lexer<'a> {
 
         for (idx, chr) in chars {
             // WIP
-            let is_part_of_value = if let "Attribute value" = position {
-                !(chr.is_whitespace() || matches!(chr, '>'))
+            let is_part_of_value = if let "Attribute key" = position {
+                // See https://html.spec.whatwg.org/multipage/syntax.html#attributes-2
+                // TODO non-characters
+                !matches!(chr, ' ' | '\'' | '"' | '>' | '/' | '=')
+            } else if let "Attribute value" = position {
+                // See https://html.spec.whatwg.org/multipage/syntax.html#attributes-2
+                !(chr.is_ascii_whitespace() || matches!(chr, '`' | '"' | '\'' | '>' | '<' | '='))
             } else {
                 chr.is_alphanumeric() || matches!(chr, '-' | '_' | '$' | ':')
             };
@@ -179,14 +183,58 @@ impl<'a> Lexer<'a> {
         Err(start)
     }
 
+    pub fn parse_opening_tag_no_advance(&self) -> Option<&'a str> {
+        let current = self.current().trim_start();
+        if let Some(rest) = current.strip_prefix('<') {
+            for (idx, chr) in rest.char_indices() {
+                if let '>' | ' ' = chr {
+                    return Some(&rest[..idx]);
+                }
+            }
+            None
+        } else {
+            None
+        }
+    }
+
+    pub fn parse_closing_tag_no_advance(&self) -> Option<&'a str> {
+        let current = self.current().trim_start();
+        if let Some(rest) = current.strip_prefix("</") {
+            for (idx, chr) in rest.char_indices() {
+                if let '>' | ' ' = chr {
+                    return Some(&rest[..idx]);
+                }
+            }
+            None
+        } else {
+            None
+        }
+    }
+
     pub fn skip(&mut self) {
-        let bytes = self.current().bytes().enumerate();
-        for (idx, byte) in bytes {
-            if !byte.is_ascii_whitespace() {
+        let chars = self.current().char_indices();
+        for (idx, chr) in chars {
+            if !chr.is_whitespace() {
                 self.head += idx as u32;
                 break;
             }
         }
+    }
+
+    pub fn parse_whitespace(&mut self) -> Option<&'a str> {
+        let current = self.current();
+        let chars = current.char_indices();
+        for (idx, chr) in chars {
+            if !chr.is_whitespace() {
+                self.head += idx as u32;
+                return if idx == 0 {
+                    None
+                } else {
+                    Some(&current[..idx])
+                };
+            }
+        }
+        None
     }
 
     pub fn expect(&mut self, chr: char) -> Result<(), u32> {
@@ -201,5 +249,31 @@ impl<'a> Lexer<'a> {
 
     pub fn advance(&mut self, distance: u32) {
         self.head += distance;
+    }
+
+    pub fn after_comments(&self) -> &str {
+        todo!()
+    }
+
+    pub fn parse_one_or_more_whitespace(&mut self) -> bool {
+        if self
+            .current()
+            .starts_with(|c: char| c.is_ascii_whitespace())
+        {
+            self.skip();
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn starts_with_ascii_case_ignore(&mut self, expected: &str) -> bool {
+        let current = self.current().get(..expected.len());
+        if current.is_some_and(|slice| slice.eq_ignore_ascii_case(expected)) {
+            self.advance(expected.len() as u32);
+            true
+        } else {
+            false
+        }
     }
 }

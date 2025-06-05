@@ -1,37 +1,43 @@
 use super::*;
 
-/** TODO Problems:
-- Doesn't escape character codes
-- Lots of spacing probkems
-*/
-pub fn inner_text(element: &Element) -> String {
-    fn inner_text_(element: &Element, buf: &mut String) {
-        if let "math" | "svg" | "title" = element.tag_name {
-            return;
-        }
-        if let ElementChildren::Children(ref children) = element.children {
-            for child in children {
-                match child {
-                    Node::Element(element) => {
-                        let skip_citations = false;
-                        let skip = skip_citations && element.tag_name == "sup";
-                        // TODO check inner is a with [] etc
-                        if skip {
-                            return;
-                        }
-                        inner_text_(element, buf);
-                    }
-                    Node::TextNode(content) => {
-                        buf.push_str(&unescape_string_content(content));
-                    }
-                    Node::Comment(..) | Node::MismatchClosingTag(..) => {}
-                }
-            }
+fn inner_text_element_(element: &Element, buf: &mut String) {
+    if let "math" | "svg" | "title" = element.tag_name {
+        return;
+    }
+    let skip_citations = true;
+    let skip = skip_citations && element.tag_name == "sup";
+    // TODO check inner is a with [] etc
+    if skip {
+        return;
+    }
+    if let ElementChildren::Children(ref children) = element.children {
+        for child in children {
+            inner_text_(child, buf);
         }
     }
+}
 
+fn inner_text_(node: &Node, buf: &mut String) {
+    match node {
+        Node::Element(element) => {
+            inner_text_element_(element, buf);
+        }
+        Node::TextNode(content) => {
+            buf.push_str(&unescape_string_content(content));
+        }
+        Node::Comment(..) | Node::MismatchClosingTag(..) => {}
+    }
+}
+
+pub fn inner_text(node: &Node) -> String {
     let mut s = String::new();
-    inner_text_(element, &mut s);
+    inner_text_(node, &mut s);
+    s
+}
+
+pub fn inner_text_element(element: &Element) -> String {
+    let mut s = String::new();
+    inner_text_element_(element, &mut s);
     s
 }
 

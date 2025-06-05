@@ -10,10 +10,17 @@ pub mod operations;
 
 type ParseResult<T> = Result<T, HTMLParseError>;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
+pub struct ContextItem {
+    pub tag_name: String,
+    pub at: u32,
+}
+
+#[derive(Debug, Clone)]
 pub struct HTMLParseError {
     pub reason: HTMLParseErrorReason,
     pub at: u32,
+    pub context: Vec<ContextItem>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -32,6 +39,18 @@ pub enum Node<'a> {
 }
 
 impl<'a> Node<'a> {
+    pub fn child_at(&self, matcher: impl matching::Matcher) -> Option<&Node> {
+        if let Node::Element(element) = self {
+            element.children.child_at(matcher)
+        } else {
+            None
+        }
+    }
+}
+
+pub type ContextChain = Vec<ContextItem>;
+
+impl<'a> Node<'a> {
     // fn get_position(&self) -> Span {
     // 	match self {
     // 		Node::TextNode(_, pos)
@@ -41,17 +60,9 @@ impl<'a> Node<'a> {
     // 	}
     // }
 
-    fn from_reader(reader: &mut crate::Lexer<'a>) -> ParseResult<Self> {
-        reader.skip();
-        // let start = reader.get_start();
-        // if reader.is_operator_advance("{") {
-        // 	let expression = FunctionArgument::from_reader(reader)?;
-        // 	let end = reader.expect('}')?;
-        // 	// let position = start.union(end);
-        // 	let position = ();
-        // 	Ok(Node::InterpolatedExpression(Box::new(expression), position))
-        // } else
-        if reader.starts_with_str("<!--") {
+    fn from_reader(reader: &mut crate::Lexer<'a>, scope: &mut ContextChain) -> ParseResult<Self> {
+        if reader.starts_with_no_advance("<!--") {
+            reader.skip();
             reader.advance("<!--".len() as u32);
             // .map_err(|()| {
             // 	// TODO might be a problem
@@ -63,10 +74,11 @@ impl<'a> Node<'a> {
                 .map_err(|at| HTMLParseError {
                     reason: HTMLParseErrorReason::Expected { slice: "-->" },
                     at,
+                    context: scope.clone(),
                 })?;
             Ok(Node::Comment(content))
-        } else if reader.starts_with_str("<") {
-            let element = Element::from_reader(reader)?;
+        } else if reader.starts_with_no_advance("<") {
+            let element = Element::from_reader(reader, scope)?;
             Ok(Node::Element(element))
         } else {
             let content = reader
@@ -74,6 +86,7 @@ impl<'a> Node<'a> {
                 .map_err(|at| HTMLParseError {
                     reason: HTMLParseErrorReason::Expected { slice: "<" },
                     at,
+                    context: scope.clone(),
                 })?;
             // dbg!(content.char_indices().filter(|(_, chr)| *chr == '`').collect::<Vec<_>>());
             // .map_err(|()| {
@@ -81,7 +94,7 @@ impl<'a> Node<'a> {
             // 	let position = reader.get_start().with_length(reader.get_current().len());
             // 	ParseError::new(crate::ParseErrors::UnexpectedEnd, position)
             // })?;
-            Ok(Node::TextNode(content.trim_start()))
+            Ok(Node::TextNode(content))
         }
     }
 
@@ -136,6 +149,15 @@ pub enum ElementChildren<'a> {
     SelfClosing,
 }
 
+impl<'a> ElementChildren<'a> {
+    pub fn child_at(&self, matcher: impl matching::Matcher) -> Option<&Node> {
+        match self {
+            ElementChildren::Children(children) => matcher.extract(children),
+            ElementChildren::Literal(_) | ElementChildren::SelfClosing => None,
+        }
+    }
+}
+
 impl<'a> From<Element<'a>> for Node<'a> {
     fn from(value: Element<'_>) -> Node<'_> {
         Node::Element(value)
@@ -147,28 +169,43 @@ pub struct Document<'a> {
     pub html_element: Element<'a>,
 }
 
+/// [Specification](https://html.spec.whatwg.org/multipage/syntax.html#the-doctype)
+fn parse_doctype(reader: &mut crate::Lexer<'_>) {
+    reader.skip();
+    let starts = reader.starts_with_ascii_case_ignore("<!DOCTYPE");
+    if starts {
+        let _ = reader.parse_one_or_more_whitespace();
+        let _ = reader.starts_with_ascii_case_ignore("html");
+        // TODO legacy string
+        let _ = reader.is_operator_advance(">");
+    }
+}
+
 impl<'a> Document<'a> {
     pub fn from_reader(reader: &mut crate::Lexer<'a>) -> ParseResult<Self> {
-        // TODO temp
-        let lowercase = reader.is_operator_advance("<!DOCTYPE html>");
-        if !lowercase {
-            let _ = reader.is_operator_advance("<!doctype html>");
-        }
-        Element::from_reader(reader).map(|html_element| Document { html_element })
+        parse_doctype(reader);
+        Element::from_reader(reader, &mut Vec::new()).map(|html_element| Document { html_element })
     }
 }
 
 impl<'a> Element<'a> {
-    pub fn from_reader(reader: &mut crate::Lexer<'a>) -> ParseResult<Self> {
+    pub fn from_reader(
+        reader: &mut crate::Lexer<'a>,
+        scope: &mut ContextChain,
+    ) -> ParseResult<Self> {
+        reader.skip();
+        let start = reader.consumed();
         reader.expect('<').map_err(|at| HTMLParseError {
             reason: HTMLParseErrorReason::Expected { slice: "<" },
             at,
+            context: scope.clone(),
         })?;
         let tag_name = reader
             .parse_identifier("Element name")
             .map_err(|at| HTMLParseError {
                 reason: HTMLParseErrorReason::InvalidIdentifier,
                 at,
+                context: Vec::new(),
             })?;
         let mut attributes = Vec::new();
         // TODO spread attributes
@@ -190,10 +227,14 @@ impl<'a> Element<'a> {
                 // let start = reader.get_start();
                 let key =
                     reader
-                        .parse_identifier("Element attribute")
+                        .parse_identifier("Attribute key")
                         .map_err(|at| HTMLParseError {
                             reason: HTMLParseErrorReason::InvalidIdentifier,
                             at,
+                            context: vec![ContextItem {
+                                tag_name: tag_name.to_owned(),
+                                at: start,
+                            }],
                         })?;
                 let attribute = if reader.is_operator_advance("=") {
                     // let start = reader.get_start();
@@ -202,6 +243,7 @@ impl<'a> Element<'a> {
                             reader.parse_string_literal().map_err(|at| HTMLParseError {
                                 reason: HTMLParseErrorReason::NoEndToStringDelimeter,
                                 at,
+                                context: scope.clone(),
                             })?;
                         Attribute {
                             key,
@@ -212,6 +254,10 @@ impl<'a> Element<'a> {
                             HTMLParseError {
                                 reason: HTMLParseErrorReason::InvalidIdentifier,
                                 at,
+                                context: vec![ContextItem {
+                                    tag_name: tag_name.to_owned(),
+                                    at: start,
+                                }],
                             }
                         })?;
                         Attribute {
@@ -252,6 +298,7 @@ impl<'a> Element<'a> {
                 HTMLParseError {
                     reason: HTMLParseErrorReason::Expected { slice: "</" },
                     at,
+                    context: scope.clone(),
                 }
                 // TODO might be a problem
                 // let position = reader.get_start().with_length(reader.get_current().len());
@@ -266,6 +313,7 @@ impl<'a> Element<'a> {
                         .map_err(|at| HTMLParseError {
                             reason: HTMLParseErrorReason::InvalidIdentifier,
                             at,
+                            context: scope.clone(),
                         })?;
                 if tag_name == closing_tag_name {
                     break;
@@ -275,7 +323,9 @@ impl<'a> Element<'a> {
             reader.expect('>').map_err(|at| HTMLParseError {
                 reason: HTMLParseErrorReason::Expected { slice: "</" },
                 at,
+                context: scope.clone(),
             })?;
+
             let children = ElementChildren::Literal(content);
             return Ok(Element {
                 tag_name,
@@ -284,25 +334,50 @@ impl<'a> Element<'a> {
             });
         }
 
-        let children = children_from_reader(reader, tag_name)?;
-        // if reader.is_operator_advance("</") {
-        //     let _closing_tag_name = reader.parse_identifier("closing tag")?;
-        //     reader.expect('>')?;
+        scope.push(ContextItem {
+            tag_name: tag_name.to_owned(),
+            at: start,
+        });
+        let children = children_from_reader(reader, scope);
+        let _popped = scope.pop();
+        // TODO pointer equality on tagname
+        debug_assert!(_popped.is_some_and(|t| tag_name == t.tag_name));
 
-        Ok(Element {
-            tag_name,
-            attributes,
-            children: ElementChildren::Children(children),
-        })
-        // } else {
-        //     Err(())
-        // }
+        match children {
+            Ok(children) => {
+                if let Some(closing_tag_name) = reader.parse_closing_tag_no_advance() {
+                    if tag_name == closing_tag_name {
+                        reader.advance(2 + closing_tag_name.len() as u32);
+                        reader.expect('>').map_err(|at| HTMLParseError {
+                            reason: HTMLParseErrorReason::Expected { slice: ">" },
+                            at,
+                            context: Vec::new(),
+                        })?;
+                    } else {
+                        // TODO function should check. This is a valid path for mismatched tags
+                        // dbg!("should not be here", reader.consumed());
+                    }
+                }
+                Ok(Element {
+                    tag_name,
+                    attributes,
+                    children: ElementChildren::Children(children),
+                })
+            }
+            Err(err) => {
+                // err.context.push(ContextItem {
+                //     tag_name: tag_name.to_owned(),
+                //     at: start,
+                // });
+                Err(err)
+            }
+        }
     }
 
     /// Also returns how many bytes parsed
     pub fn from_string(content: &'a str) -> ParseResult<(Self, u32)> {
         let mut lexer = Lexer::new(content);
-        let element = Self::from_reader(&mut lexer)?;
+        let element = Self::from_reader(&mut lexer, &mut Vec::new())?;
         Ok((element, lexer.consumed()))
     }
 
@@ -335,15 +410,18 @@ impl<'a> Attribute<'a> {
     fn _from_reader(reader: &mut crate::Lexer<'a>) -> ParseResult<Self> {
         // let start = reader.get_start();
         let key = reader
-            .parse_identifier("Element attribute")
+            .parse_identifier("Attribute key")
             .map_err(|at| HTMLParseError {
                 reason: HTMLParseErrorReason::InvalidIdentifier,
                 at,
+                context: Vec::new(),
             })?;
+
         if reader.is_operator_advance("=") {
             if reader.starts_with_string_delimeter() {
                 let content = reader.parse_string_literal().map_err(|at| HTMLParseError {
                     reason: HTMLParseErrorReason::NoEndToStringDelimeter,
+                    context: Vec::new(),
                     at,
                 })?;
                 Ok(Attribute {
@@ -360,6 +438,7 @@ impl<'a> Attribute<'a> {
                         slice: "string delimeter",
                     },
                     at,
+                    context: Vec::new(),
                 })
                 // Err(ParseError::new(ParseErrors::ExpectedAttribute, error_position))
             }
@@ -409,36 +488,72 @@ impl<'a> Attribute<'a> {
 /// Also parsing end tag (to account for mismatched end tags)
 fn children_from_reader<'a>(
     reader: &mut crate::Lexer<'a>,
-    expected_closing_tag_name: &str,
+    scope: &mut ContextChain,
 ) -> ParseResult<Vec<Node<'a>>> {
     let mut children = Vec::new();
     // TODO count new lines etc
     loop {
-        reader.skip();
         // for _ in 0..reader.last_was_from_new_line() {
         // 	children.push(Node::LineBreak);
         // }
-        if reader.is_operator_advance("</") {
-            if !expected_closing_tag_name.is_empty() {
-                let closing_tag_name =
-                    reader
-                        .parse_identifier("closing tag")
-                        .map_err(|at| HTMLParseError {
-                            reason: HTMLParseErrorReason::InvalidIdentifier,
-                            at,
-                        })?;
-                reader.expect('>').map_err(|at| HTMLParseError {
-                    reason: HTMLParseErrorReason::Expected { slice: ">" },
-                    at,
-                })?;
-                if expected_closing_tag_name != closing_tag_name {
-                    children.push(Node::MismatchClosingTag(closing_tag_name));
-                    continue;
-                }
+        if let Some(closing_tag_name) = reader.parse_closing_tag_no_advance() {
+            let _whitespace = reader.parse_whitespace();
+            // if let Some(whitespace) = whitespace {
+            //     children.push(Node::TextNode(whitespace));
+            // }
+
+            // TODO wip
+            if scope.iter().rev().any(|c| c.tag_name == closing_tag_name) {
+                return Ok(children);
             }
-            return Ok(children);
+
+            // TODO explain
+            children.push(Node::MismatchClosingTag(closing_tag_name));
+            reader.advance(2 + closing_tag_name.len() as u32);
+            reader.expect('>').map_err(|at| HTMLParseError {
+                reason: HTMLParseErrorReason::Expected { slice: ">" },
+                at,
+                context: Vec::new(),
+            })?;
+            continue;
         }
-        children.push(Node::from_reader(reader)?);
+
+        let next = reader.parse_opening_tag_no_advance();
+        if let Some(next) = next {
+            #[rustfmt::skip]
+            fn not_allowed_in_p(on: &str) -> bool {
+                matches!(on,
+                    "address" | "article" | "aside" | "blockquote" | "details" | "dialog" | "div" | "dl" | "fieldset" 
+                    | "figcaption" | "figure" | "footer" | "form" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6" 
+                    | "header" | "hgroup" | "hr" | "main" | "menu" | "nav" | "ol" | "p" | "pre" | "search" 
+                    | "section" | "table" | "ul"
+                )
+            }
+
+            // TODO unwrap
+            let expected_closing_tag_name = scope.last().unwrap().tag_name.as_str();
+            let should_return = match expected_closing_tag_name {
+                // TODO more branches
+                "p" => not_allowed_in_p(next),
+                "li" => next == "li",
+                _ => false,
+            };
+            if should_return {
+                let whitespace = reader.parse_whitespace();
+                if let Some(whitespace) = whitespace {
+                    children.push(Node::TextNode(whitespace));
+                }
+                return Ok(children);
+            }
+        }
+
+        let node = Node::from_reader(reader, scope)?;
+        if let Node::TextNode(content) = node {
+            if content.trim().is_empty() {
+                continue;
+            }
+        }
+        children.push(node);
     }
 }
 
@@ -498,21 +613,21 @@ pub fn html_tag_is_self_closing(tag_name: &str) -> bool {
     )
 }
 
-pub fn parse_head(content: &str) -> ParseResult<Element> {
-    let mut reader = Lexer::new(content);
-    let lowercase = reader.is_operator_advance("<!DOCTYPE html>");
-    if !lowercase {
-        let _ = reader.is_operator_advance("<!doctype html>");
-    }
-    let _ = reader.is_operator_advance("<html>");
-    Element::from_reader(&mut reader)
-}
+// pub fn parse_head(content: &str) -> ParseResult<Element> {
+//     let mut reader = Lexer::new(content);
+//     let lowercase = reader.is_operator_advance("<!DOCTYPE html>");
+//     if !lowercase {
+//         let _ = reader.is_operator_advance("<!doctype html>");
+//     }
+//     let _ = reader.is_operator_advance("<html>");
+//     Element::from_reader(&mut reader, &mut )
+// }
 
 #[cfg_attr(target_family = "wasm", wasm_bindgen::prelude::wasm_bindgen)]
 pub fn retrieve(content: String, query: String) -> String {
     use crate::{
         matching::{query_selector, query_selector_all, Selector},
-        operations::inner_text,
+        operations::{inner_text, inner_text_element},
     };
 
     let mut reader = Lexer::new(&content);
@@ -543,7 +658,7 @@ pub fn retrieve(content: String, query: String) -> String {
                     .find_map(|Attribute { key, value }| (key == &expected_key).then_some(value));
                 if let Some(value) = value {
                     if !buf.is_empty() {
-                        buf.push('\0');
+                        buf.push_str("\0a");
                     }
                     buf.push_str(value);
                 }
@@ -553,9 +668,48 @@ pub fn retrieve(content: String, query: String) -> String {
             let mut buf = String::new();
             for element in current {
                 if !buf.is_empty() {
+                    buf.push_str("\0t");
+                }
+                buf.push_str(&inner_text_element(element));
+            }
+            return buf;
+        } else if let "table" = query {
+            let mut buf = String::new();
+            for element in current {
+                if !buf.is_empty() {
                     buf.push('\0');
                 }
-                buf.push_str(&inner_text(element));
+                let mut rows: &[_] =
+                    if let ElementChildren::Children(ref children) = element.children {
+                        children
+                    } else {
+                        &[]
+                    };
+                if let Some(children) = rows.iter().find_map(|child| {
+                    if let Node::Element(Element {
+                        tag_name, children, ..
+                    }) = child
+                    {
+                        (*tag_name == "tbody").then_some(children)
+                    } else {
+                        None
+                    }
+                }) {
+                    if let ElementChildren::Children(ref children) = children {
+                        rows = children;
+                    }
+                }
+                for child in rows {
+                    if let Node::Element(Element { children, .. }) = child {
+                        buf.push_str("\0r");
+                        if let ElementChildren::Children(ref children) = children {
+                            for element in children {
+                                buf.push_str("\0d");
+                                buf.push_str(&inner_text(element));
+                            }
+                        }
+                    }
+                }
             }
             return buf;
         }
