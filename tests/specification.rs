@@ -29,7 +29,7 @@ fn main() -> std::process::ExitCode {
         // let name = format!("{name}");
         let name = test_case.name;
         let result = test(&name, move || {
-            let out = as_lines(&test_case.case).replace("\n", "\r\n");
+            let out = as_lines(&test_case.case).replace("\r\n", "\n");
             let expectation = test_case.output.trim_end();
             pretty_assertions::assert_eq!(out.trim_end(), expectation, "expected {out}",)
         });
@@ -75,6 +75,7 @@ fn get_tests() -> Vec<Test> {
             //     current_test.options.top_level_separator = Some("\n");
             // }
         } else if let MarkdownElement::CodeBlock { code, .. } = element {
+            let code = code.replace("\r\n", "\n");
             if current_test.case.is_empty() {
                 code.clone_into(&mut current_test.case);
             } else if current_test.output.is_empty() {
