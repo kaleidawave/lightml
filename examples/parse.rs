@@ -1,10 +1,20 @@
+use codespan_reporting::diagnostic::{Diagnostic, Label};
+use codespan_reporting::files::SimpleFile;
+use codespan_reporting::term::{
+    self,
+    termcolor::{ColorChoice, StandardStream},
+    Config,
+};
+
 fn main() {
-    let example = r#"<div class="something">
-        <h3>Hello World</h3>
-    </div>"#;
+    let example = r#"<div>
+    <p>Hi
+<p>Something
+</div>"#;
 
     // If arg use that file, else use example above
-    let content = if let Some(path) = std::env::args().nth(1) {
+    let path = std::env::args().nth(1);
+    let content = if let Some(ref path) = path {
         std::fs::read_to_string(path).unwrap()
     } else {
         example.to_owned()
@@ -23,6 +33,11 @@ fn main() {
     const STACK_SIZE: usize = 8 * 1024 * 1024;
 
     std::thread::scope(|s| {
+        let path = path.unwrap_or("*example*".to_owned());
+        let file = SimpleFile::new(path, content.clone());
+        let writer = StandardStream::stderr(ColorChoice::Always);
+        let config = Config::default();
+
         let thread = std::thread::Builder::new()
             .name("Parsing thread".to_owned())
             .stack_size(STACK_SIZE)
@@ -38,7 +53,7 @@ fn main() {
             "text" => {
                 eprintln!(
                     "Text: {text}",
-                    text = operations::inner_text(&result.unwrap().html_element)
+                    text = operations::inner_text_element(&result.unwrap().html_element)
                 );
             }
             "verbose" => {
@@ -50,10 +65,19 @@ fn main() {
                 }
                 Err(err) => {
                     let at = err.at as usize;
-                    const SPACE: usize = 50;
-                    let lhs = content.get(at.saturating_sub(SPACE)..at);
-                    let rhs = content.get(at..(at + SPACE));
-                    panic!("Could not parse {err:?} {:?}", (lhs, rhs));
+                    let errors = Diagnostic::error();
+                    let diagnostic = errors
+                        .with_label(Label::primary((), at..at))
+                        .with_labels_iter(err.context.into_iter().rev().map(|context| {
+                            let at = context.at as usize;
+                            Label::secondary((), at..at).with_message(format!(
+                                "Parsing element {tag_name}",
+                                tag_name = context.tag_name
+                            ))
+                        }))
+                        .with_message(format!("Error: {reason:?}", reason = err.reason));
+                    term::emit(&mut writer.lock(), &config, &file, &diagnostic)
+                        .expect("Error emitting");
                     // panic!("Could not parse {err:?}");
                 }
             },
