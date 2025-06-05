@@ -126,7 +126,7 @@ Ok(
                             tag_name: "script",
                             attributes: [],
                             children: Literal(
-                                "\r\n\t\tconst x = `<h1>Hiya</h1>`;\r\n\t",
+                                "\n\t\tconst x = `<h1>Hiya</h1>`;\n\t",
                             ),
                         },
                     ),
@@ -190,7 +190,7 @@ Ok(
                             children: Children(
                                 [
                                     TextNode(
-                                        "Hiya\r\n    ",
+                                        "Hiya\n    ",
                                     ),
                                 ],
                             ),
@@ -203,7 +203,7 @@ Ok(
                             children: Children(
                                 [
                                     TextNode(
-                                        "Hello\r\n",
+                                        "Hello\n",
                                     ),
                                 ],
                             ),
