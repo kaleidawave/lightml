@@ -7,6 +7,7 @@ use std::borrow::Cow;
 mod lexer;
 pub mod matching;
 pub mod operations;
+pub mod retrieval;
 
 type ParseResult<T> = Result<T, HTMLParseError>;
 
@@ -226,11 +227,11 @@ impl<'a> Element<'a> {
         }
 
         if html_tag_is_self_closing(tag_name) {
-            return Ok(Element {
+            Ok(Element {
                 tag_name,
                 attributes,
                 children: ElementChildren::SelfClosing,
-            });
+            })
         } else if html_tag_contains_literal_content(tag_name) {
             // TODO could embed parser here?
             // TODO I think this should take into account when it is not at the end
@@ -254,6 +255,7 @@ impl<'a> Element<'a> {
                             at,
                             context: scope.clone(),
                         })?;
+
                 if tag_name == closing_tag_name {
                     break;
                 }
@@ -266,41 +268,41 @@ impl<'a> Element<'a> {
             })?;
 
             let children = ElementChildren::Literal(content);
-            return Ok(Element {
+            Ok(Element {
                 tag_name,
                 attributes,
                 children,
+            })
+        } else {
+            scope.push(ContextItem {
+                tag_name: tag_name.to_owned(),
+                at: start,
             });
-        }
 
-        scope.push(ContextItem {
-            tag_name: tag_name.to_owned(),
-            at: start,
-        });
+            let children = children_from_reader(reader, scope)?;
+            let _popped = scope.pop();
 
-        let children = children_from_reader(reader, scope)?;
-        let _popped = scope.pop();
+            debug_assert!(_popped.is_some_and(|t| tag_name == t.tag_name));
 
-        debug_assert!(_popped.is_some_and(|t| tag_name == t.tag_name));
-
-        if let Some(closing_tag_name) = reader.parse_closing_tag_no_advance() {
-            if tag_name == closing_tag_name {
-                reader.advance(2 + closing_tag_name.len() as u32);
-                reader.expect('>').map_err(|at| HTMLParseError {
-                    reason: HTMLParseErrorReason::Expected { slice: ">" },
-                    at,
-                    context: Vec::new(),
-                })?;
-            } else {
-                // TODO function should check. This is a valid path for mismatched tags
-                // dbg!("should not be here", reader.consumed());
+            if let Some(closing_tag_name) = reader.parse_closing_tag_no_advance() {
+                if tag_name == closing_tag_name {
+                    reader.advance(2 + closing_tag_name.len() as u32);
+                    reader.expect('>').map_err(|at| HTMLParseError {
+                        reason: HTMLParseErrorReason::Expected { slice: ">" },
+                        at,
+                        context: Vec::new(),
+                    })?;
+                } else {
+                    // TODO function should check. This is a valid path for mismatched tags
+                    // dbg!("should not be here", reader.consumed());
+                }
             }
+            Ok(Element {
+                tag_name,
+                attributes,
+                children: ElementChildren::Children(children),
+            })
         }
-        Ok(Element {
-            tag_name,
-            attributes,
-            children: ElementChildren::Children(children),
-        })
     }
 
     /// Also returns how many bytes parsed
@@ -459,99 +461,4 @@ pub fn html_tag_is_self_closing(tag_name: &str) -> bool {
             | "track"
             | "wbr"
     )
-}
-
-#[cfg_attr(target_family = "wasm", wasm_bindgen::prelude::wasm_bindgen)]
-pub fn retrieve(content: String, query: String) -> String {
-    use crate::{
-        matching::{query_selector, query_selector_all, Selector},
-        operations::{inner_text, inner_text_element},
-    };
-
-    let mut reader = Lexer::new(&content);
-    let result = Document::from_reader(&mut reader);
-    let document = result.expect("failed to parse document");
-
-    let mut current: Vec<&Element> = vec![&document.html_element];
-
-    for query in query.split('\0') {
-        if let Some(selector) = query.strip_prefix("single ") {
-            let selector = Selector::from_string(selector.trim());
-            current = current
-                .into_iter()
-                .flat_map(|element| query_selector(element, &selector))
-                .collect();
-        } else if let Some(selector) = query.strip_prefix("all ") {
-            let selector = Selector::from_string(selector.trim());
-            current = current
-                .into_iter()
-                .flat_map(|element| query_selector_all(element, &selector))
-                .collect();
-        } else if let Some(expected_key) = query.strip_prefix("attribute ") {
-            let mut buf = String::new();
-            for element in current {
-                let value = element
-                    .attributes
-                    .iter()
-                    .find_map(|Attribute { key, value }| (key == &expected_key).then_some(value));
-                if let Some(value) = value {
-                    if !buf.is_empty() {
-                        buf.push_str("\0a");
-                    }
-                    buf.push_str(value);
-                }
-            }
-            return buf;
-        } else if let "text" = query {
-            let mut buf = String::new();
-            for element in current {
-                if !buf.is_empty() {
-                    buf.push_str("\0t");
-                }
-                buf.push_str(&inner_text_element(element));
-            }
-            return buf;
-        } else if let "table" = query {
-            let mut buf = String::new();
-            for element in current {
-                if !buf.is_empty() {
-                    buf.push('\0');
-                }
-                let mut rows: &[_] =
-                    if let ElementChildren::Children(ref children) = element.children {
-                        children
-                    } else {
-                        &[]
-                    };
-                if let Some(children) = rows.iter().find_map(|child| {
-                    if let Node::Element(Element {
-                        tag_name, children, ..
-                    }) = child
-                    {
-                        (*tag_name == "tbody").then_some(children)
-                    } else {
-                        None
-                    }
-                }) {
-                    if let ElementChildren::Children(ref children) = children {
-                        rows = children;
-                    }
-                }
-                for child in rows {
-                    if let Node::Element(Element { children, .. }) = child {
-                        buf.push_str("\0r");
-                        if let ElementChildren::Children(ref children) = children {
-                            for element in children {
-                                buf.push_str("\0d");
-                                buf.push_str(&inner_text(element));
-                            }
-                        }
-                    }
-                }
-            }
-            return buf;
-        }
-    }
-
-    panic!("no end query")
 }
