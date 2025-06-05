@@ -383,8 +383,8 @@ fn children_from_reader<'a>(
             continue;
         }
 
-        let next = reader.parse_opening_tag_no_advance();
-        if let Some(next) = next {
+        let next_element_tag = reader.parse_opening_tag_no_advance();
+        if let Some(next_element_tag) = next_element_tag {
             #[rustfmt::skip]
             fn not_allowed_in_p(on: &str) -> bool {
                 matches!(on,
@@ -399,15 +399,26 @@ fn children_from_reader<'a>(
             let expected_closing_tag_name = scope.last().unwrap().tag_name.as_str();
             let should_return = match expected_closing_tag_name {
                 // TODO more branches
-                "p" => not_allowed_in_p(next),
-                "li" => next == "li",
+                "p" => not_allowed_in_p(next_element_tag),
+                "li" => next_element_tag == "li",
                 _ => false,
             };
-            if should_return {
-                let whitespace = reader.parse_whitespace();
-                if let Some(whitespace) = whitespace {
-                    children.push(Node::TextNode(whitespace));
+            if !children.is_empty() {
+                // WIP
+                let should_add_whitespace = match expected_closing_tag_name {
+                    // TODO more branches
+                    "h1" | "h2" | "h3" | "h4" | "h5" | "h6" | "p" | "li" | "span" | "em"
+                    | "strong" => true,
+                    _ => false,
+                };
+                if should_add_whitespace {
+                    let whitespace = reader.parse_whitespace();
+                    if let Some(whitespace) = whitespace {
+                        children.push(Node::TextNode(whitespace));
+                    }
                 }
+            }
+            if should_return {
                 return Ok(children);
             }
         }

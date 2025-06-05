@@ -3,6 +3,8 @@ use lightml::{Document, Lexer};
 fn as_lines(content: &str) -> String {
     let mut reader = Lexer::new(content);
     let result = Document::from_reader(&mut reader);
+    // TODO does this throw information away?
+    let result = result.map(|document| document.html_element);
     format!("{result:#?}")
 }
 
@@ -31,7 +33,7 @@ fn main() -> std::process::ExitCode {
         let result = test(&name, move || {
             let out = as_lines(&test_case.case).replace("\r\n", "\n");
             let expectation = test_case.output.trim_end();
-            pretty_assertions::assert_eq!(out.trim_end(), expectation, "expected {out}",)
+            pretty_assertions::assert_eq!(out.trim_end(), expectation, "expected {expectation}",)
         });
         match result {
             Ok(()) => {
@@ -53,6 +55,7 @@ fn main() -> std::process::ExitCode {
 
 #[derive(Debug, Default)]
 struct Test {
+    section: String,
     name: String,
     options: (),
     case: String,
@@ -64,12 +67,23 @@ fn get_tests() -> Vec<Test> {
 
     let mut tests: Vec<Test> = Vec::new();
     let mut current_test = Test::default();
+    let mut section = String::new();
+
     let result = parse(include_str!("./specification.md"), |element| {
-        if let MarkdownElement::Heading { level: 3, text } = element {
-            if !current_test.case.is_empty() {
-                tests.push(std::mem::take(&mut current_test));
+        if let MarkdownElement::Heading {
+            level,
+            text: content,
+        } = element
+        {
+            if level >= 3 {
+                if !current_test.case.is_empty() {
+                    tests.push(std::mem::take(&mut current_test));
+                }
+                current_test.name = content.no_decoration();
+                section.clone_into(&mut current_test.section);
+            } else {
+                section = content.no_decoration();
             }
-            current_test.name = text.no_decoration();
         } else if let MarkdownElement::Paragraph(_content) = element {
             // if content.0.ends_with("`top_level_separator = Some(\"\\n\")`") {
             //     current_test.options.top_level_separator = Some("\n");
@@ -81,7 +95,7 @@ fn get_tests() -> Vec<Test> {
             } else if current_test.output.is_empty() {
                 code.clone_into(&mut current_test.output);
             } else {
-                panic!("Another code block")
+                eprintln!("Another code block {code:?}");
             }
         }
     });
