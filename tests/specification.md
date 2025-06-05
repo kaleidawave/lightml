@@ -268,7 +268,7 @@ Ok(
                         children: Children(
                             [
                                 TextNode(
-                                    "Hiya\n    ",
+                                    "Hiya\n ",
                                 ),
                             ],
                         ),
@@ -316,7 +316,7 @@ Ok(
                         children: Children(
                             [
                                 TextNode(
-                                    "Hiya\n    ",
+                                    "Hiya\n ",
                                 ),
                             ],
                         ),

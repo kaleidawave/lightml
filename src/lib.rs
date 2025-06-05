@@ -76,7 +76,7 @@ impl<'a> Node<'a> {
                     at,
                     context: scope.clone(),
                 })?;
-            Ok(Node::TextNode(content))
+            Ok(Node::TextNode(resolve_whitespace(content)))
         }
     }
 }
@@ -461,4 +461,17 @@ pub fn html_tag_is_self_closing(tag_name: &str) -> bool {
             | "track"
             | "wbr"
     )
+}
+
+/// HTML text nodes allow at most one space
+/// WIP needs new line stuff
+fn resolve_whitespace(on: &str) -> &str {
+    if on == " " {
+        on
+    } else {
+        let mut chars = on.chars();
+        let leading = chars.by_ref().take_while(|c| *c == ' ').count();
+        let trailing = chars.rev().take_while(|c| *c == ' ').count();
+        &on[leading.saturating_sub(1)..(on.len() - trailing.saturating_sub(1))]
+    }
 }
