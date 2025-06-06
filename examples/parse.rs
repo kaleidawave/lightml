@@ -55,14 +55,16 @@ fn main() -> std::process::ExitCode {
                     "Text: {text}",
                     text = operations::inner_text_element(&result.unwrap().html_element)
                 );
+                std::process::ExitCode::SUCCESS
             }
             "verbose" => {
                 println!("{result:#?}");
+                std::process::ExitCode::SUCCESS
             }
             "check" => match result {
                 Ok(_) => {
                     eprintln!("Parsed successfully");
-                    return std::process::ExitCode::SUCCESS;
+                    std::process::ExitCode::SUCCESS
                 }
                 Err(err) => {
                     let at = err.at as usize;
@@ -80,14 +82,13 @@ fn main() -> std::process::ExitCode {
                     term::emit(&mut writer.lock(), &config, &file, &diagnostic)
                         .expect("Error emitting");
 
-                    return std::process::ExitCode::FAILURE;
+                    std::process::ExitCode::FAILURE
                 }
             },
             _ => {
                 eprintln!("{result:?}");
+                std::process::ExitCode::SUCCESS
             }
         }
-    });
-
-    std::process::ExitCode::SUCCESS
+    })
 }

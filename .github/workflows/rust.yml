@@ -48,7 +48,7 @@ jobs:
         key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
     - name: Run all tests
-      run: cargo test --workspace --verbose --all-features
+      run: cargo test --workspace --all-features
       shell: bash
 
     - name: Run some examples

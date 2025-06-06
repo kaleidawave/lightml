@@ -18,7 +18,8 @@ jobs:
       - name: Download shell-language
         run: |
           mkdir bin
-          gh release download -R kaleidawave/experiments assets -p shell-language-*-unknown-linux -o shell-language -D bin
+          gh release download -R kaleidawave/experiments assets -p shell-language-*-unknown-linux -O shell-language -D bin
+          ls -R .
           chmod +x ./bin/shell-language
           echo "$(pwd)/bin" >> "$GITHUB_PATH"
         env:
