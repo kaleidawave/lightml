@@ -42,26 +42,35 @@ jobs:
           for tags "performance/*" each
             echo "Checking out $tag"
             run git checkout tags/$tag
-            let status = git log -n 1
+            let status = run git log -n 1
             echo $status
             run cargo build --release --example parse
             let name = replace $tag "/" "-"
-            echo "Building parse-$name"
+            echo "Building parse-$name from $tag"
             move ./target/release/examples/parse "binaries/parse-$name"
         shell: shell-language {0}
 
       - name: (temp) check things
         run: ls -R .
 
+      - name: Run binaries
+        run: |
+          for files "binaries/*" each
+            let out = run $file $INPUT --check
+            echo "Running $file"
+            echo $out
+        shell: shell-language {0}
+        env:
+          INPUT: "out.html"
+
       - name: Compare binaries
         run: |
           let binaries = files "binaries/*"
-          echo $binaries
           let binaries = replace $binaries "\n" ","
           echo $binaries
-          let output = run hyperfine -i -L compiler $binaries '{compiler} $FILE --check'
+          let output = run hyperfine -i -L binary $binaries './{binary} $INPUT --check'
           let to = env GITHUB_STEP_SUMMARY
           write $to "```\n$output```"
         shell: shell-language {0}
         env:
-          FILE: "out.html"
+          INPUT: "out.html"
