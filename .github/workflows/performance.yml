@@ -39,7 +39,7 @@ jobs:
       
       - name: Build binaries
         run: |
-          for tags "perf/*" each
+          for tags "performance/*" each
             echo "Checking out $tag"
             git checkout tags/$tag
             let status = git log -n 1
@@ -53,7 +53,7 @@ jobs:
 
       - name: Compare binaries
         run: |
-          let binaries = files "binaries/**"
+          let binaries = files "binaries/*"
           echo $binaries
           let binaries = replace $binaries "\n" ","
           echo $binaries
