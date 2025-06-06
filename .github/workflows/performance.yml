@@ -31,15 +31,14 @@ jobs:
 
       - name: Get file
         run: |
-          curl -sS $url > out.html
+          curl -sS $URL > out.html
           ls
           cat out.html
         env:
-          url: "https://www.bbc.co.uk/news"
+          URL: "https://www.bbc.co.uk/news"
       
       - name: Build binaries
         run: |
-          mkdir binaries
           for tags "perf/*" each
             git checkout $tag
             let status = git status
@@ -48,13 +47,16 @@ jobs:
             move ./target/release/parse "binaries/parse-$tag"
         shell: shell-language {0}
 
+      - name: (temp) check things
+        run: ls -R .
+        
       - name: Compare binaries
         run: |
           let binaries = files "binaries/**"
           echo $binaries
           let binaries = replace $binaries "\n" ","
           echo $binaries
-          hyperfine -i -L compiler $binaries '{compiler} ast-explorer full $FILE --check'
+          hyperfine -i -L compiler $binaries '{compiler} $FILE --check'
         shell: shell-language {0}
         env:
           FILE: "out.html"
