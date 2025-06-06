@@ -1,0 +1,56 @@
+name: Run performance benchmarks on different pieces
+
+on:
+  push
+
+jobs:
+  test-binaries:
+    runs-on: ubuntu-latest
+    permissions: write-all
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 50
+          fetch-tags: true
+
+      # TODO abstract
+      - name: Download shell-language
+        run: gh release download -R kaleidawave/experiments assets -p shell-language-x86_64-unknown-linux
+        env:
+          GH_TOKEN: ${{ github.token }}
+      - run: |
+          mkdir bin
+          mv ./shell-language-x86_64-unknown-linux bin/shell-language
+          chmod +x ./bin/shell-language-x86_64-unknown-linux
+          echo "$(pwd)/bin" >> "$GITHUB_PATH"
+
+      - name: Get file
+        run: |
+          curl -sS $url > out.html
+          ls
+          cat out.html
+        env:
+          url: "https://www.bbc.co.uk/news"
+      
+      - name: Build binaries
+        run: |
+          mkdir binaries
+          for tags "perf/*" each
+            git checkout $tag
+            let status = git status
+            echo $status
+            cargo build --release --example parse
+            move ./target/release/parse "binaries/parse-$tag"
+        shell: shell-language {0}
+
+      - name: Compare binaries
+        run: |
+          let binaries = files "binaries/**"
+          echo $binaries
+          let binaries = replace $binaries "\n" ","
+          echo $binaries
+          hyperfine -i -L compiler $binaries '{compiler} ast-explorer full $FILE --check'
+        shell: shell-language {0}
+        env:
+          FILE: "out.html"
