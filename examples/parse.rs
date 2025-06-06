@@ -6,7 +6,7 @@ use codespan_reporting::term::{
     Config,
 };
 
-fn main() {
+fn main() -> std::process::ExitCode {
     let example = r#"<div>
     <p>Hi
 <p>Something
@@ -57,11 +57,12 @@ fn main() {
                 );
             }
             "verbose" => {
-                eprintln!("{result:#?}");
+                println!("{result:#?}");
             }
             "check" => match result {
                 Ok(_) => {
                     eprintln!("Parsed successfully");
+                    return std::process::ExitCode::SUCCESS;
                 }
                 Err(err) => {
                     let at = err.at as usize;
@@ -78,7 +79,8 @@ fn main() {
                         .with_message(format!("Error: {reason:?}", reason = err.reason));
                     term::emit(&mut writer.lock(), &config, &file, &diagnostic)
                         .expect("Error emitting");
-                    // panic!("Could not parse {err:?}");
+
+                    return std::process::ExitCode::FAILURE;
                 }
             },
             _ => {
@@ -86,4 +88,6 @@ fn main() {
             }
         }
     });
+
+    std::process::ExitCode::SUCCESS
 }
