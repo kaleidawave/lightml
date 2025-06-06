@@ -30,26 +30,27 @@ jobs:
           packages: hyperfine
 
       - name: Get file
-        run: |
-          curl -sS $URL > out.html
-          ls
-          cat out.html
+        run: curl -sS $URL > out.html
         env:
           URL: "https://www.bbc.co.uk/news"
+
+      - name: (temp) check things
+        run: git log
       
       - name: Build binaries
         run: |
           for tags "perf/*" each
-            git checkout $tag
-            let status = git status
+            echo "Checking out $tag"
+            git checkout tags/$tag
+            let status = git log -n 1
             echo $status
             cargo build --release --example parse
-            move ./target/release/parse "binaries/parse-$tag"
+            move ./target/release/examples/parse "binaries/parse-$tag"
         shell: shell-language {0}
 
       - name: (temp) check things
         run: ls -R .
-        
+
       - name: Compare binaries
         run: |
           let binaries = files "binaries/**"
