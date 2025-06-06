@@ -16,14 +16,13 @@ jobs:
 
       # TODO abstract
       - name: Download shell-language
-        run: gh release download -R kaleidawave/experiments assets -p shell-language-x86_64-unknown-linux
+        run: |
+          mkdir bin
+          gh release download -R kaleidawave/experiments assets -p shell-language-*-unknown-linux -o shell-language -D bin
+          chmod +x ./bin/shell-language
+          echo "$(pwd)/bin" >> "$GITHUB_PATH"
         env:
           GH_TOKEN: ${{ github.token }}
-      - run: |
-          mkdir bin
-          mv ./shell-language-x86_64-unknown-linux bin/shell-language
-          chmod +x ./bin/shell-language-x86_64-unknown-linux
-          echo "$(pwd)/bin" >> "$GITHUB_PATH"
 
       - name: Get file
         run: |

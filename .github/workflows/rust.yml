@@ -64,9 +64,8 @@ jobs:
 
         for url in "${sites[@]}"; do
           curl -sS $url > out.html
-          if !(target/debug/examples/parse out.html --check); then
-            echo "Could not parse source @ $url"
-          fi
+          stat out.html
+          target/debug/examples/parse out.html --check
         done
 
   clippy:
