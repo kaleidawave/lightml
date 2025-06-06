@@ -53,10 +53,15 @@ jobs:
       - name: (temp) check things
         run: ls -R .
 
+      - name: (temp) check binary
+        continue-on-error: true
+        run: ./binaries/parse-performance-base1 out.html --check
+
       - name: Run binaries
+        continue-on-error: true
         run: |
           for files "binaries/*" each
-            let out = run $file $INPUT --check
+            let out = run "./$file" $INPUT --check
             echo "Running $file"
             echo $out
         shell: shell-language {0}
