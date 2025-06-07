@@ -39,14 +39,17 @@ jobs:
       
       - name: Build binaries
         run: |
-          for tags "performance/*" each
+          let tags = git tag --list "performance/*"
+          for constant $tags each
             echo "Checking out $tag"
             run git checkout tags/$tag
             let status = run git log -n 1
             echo $status
+            echo "Building parse-$name from $tag"
             run cargo build --release --example parse
             let name = replace $tag "/" "-"
-            echo "Building parse-$name from $tag"
+            let stat = run stat ./target/release/examples/parse
+            echo $stat
             move ./target/release/examples/parse "binaries/parse-$name"
         shell: shell-language {0}
 
@@ -55,13 +58,17 @@ jobs:
 
       - name: (temp) check binary
         continue-on-error: true
-        run: ./binaries/parse-performance-base1 out.html --check
+        run: |
+          stat ./binaries/parse-performance-base1
+          ./binaries/parse-performance-base1 out.html --check
 
       - name: Run binaries
         continue-on-error: true
         run: |
           for files "binaries/*" each
             let out = run "./$file" $INPUT --check
+            let stat = run stat "./$file"
+            echo $stat
             echo "Running $file"
             echo $out
         shell: shell-language {0}
