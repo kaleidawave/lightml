@@ -29,6 +29,9 @@ jobs:
         with:
           packages: hyperfine
 
+      - name: Install valgrind (and callgrind)
+        run: sudo apt-get install valgrind
+
       - name: Get file
         run: curl -sS $URL > out.html
         env:
@@ -39,36 +42,23 @@ jobs:
       
       - name: Build binaries
         run: |
-          let tags = git tag --list "performance/*"
-          for constant $tags each
+          for git tag --list "performance/*" each
             echo "Checking out $tag"
             run git checkout tags/$tag
-            let status = run git log -n 1
-            echo $status
             echo "Building parse-$name from $tag"
-            run cargo build --release --example parse
+            echo run cargo build --release --example parse
             let name = replace $tag "/" "-"
-            let stat = run stat ./target/release/examples/parse
-            echo $stat
+            # Temporary
+            echo run stat ./target/release/examples/parse
             move ./target/release/examples/parse "binaries/parse-$name"
         shell: shell-language {0}
-
-      - name: (temp) check things
-        run: ls -R .
-
-      - name: (temp) check binary
-        continue-on-error: true
-        run: |
-          stat ./binaries/parse-performance-base1
-          ./binaries/parse-performance-base1 out.html --check
 
       - name: Run binaries
         continue-on-error: true
         run: |
           for files "binaries/*" each
             let out = run "./$file" $INPUT --check
-            let stat = run stat "./$file"
-            echo $stat
+            echo run stat "./$file"
             echo "Running $file"
             echo $out
         shell: shell-language {0}
@@ -79,10 +69,27 @@ jobs:
         run: |
           let binaries = files "binaries/*"
           let binaries = replace $binaries "\n" ","
-          echo $binaries
+          echo "binaries: $binaries"
           let output = run hyperfine -i -L binary $binaries './{binary} $INPUT --check'
           let to = env GITHUB_STEP_SUMMARY
-          write $to "```\n$output```"
+          append $to "### Performance results\n"
+          append $to "```\n$output```"
         shell: shell-language {0}
         env:
           INPUT: "out.html"
+
+      - name: Memory usage
+        continue-on-error: true
+        run: |
+          for files "binaries/*" each
+            echo "Running $file"
+            echo run valgrind --tool=callgrind $file $INPUT
+        shell: shell-language {0}
+        
+      - name: Instruction count
+        continue-on-error: true
+        run: |
+          for files "binaries/*" each
+            echo "Running $file"
+            echo run valgrind $file $INPUT
+        shell: shell-language {0}
