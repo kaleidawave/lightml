@@ -12,7 +12,7 @@ impl Matcher for usize {
 
 pub struct TagName<'a>(pub &'a str);
 
-impl<'m> Matcher for TagName<'m> {
+impl Matcher for TagName<'_> {
     fn extract<'a, 'b>(self, children: &'b Children<'a>) -> Option<&'b Node<'a>> {
         for child in children {
             if let Node::Element(element) = child {
@@ -25,6 +25,7 @@ impl<'m> Matcher for TagName<'m> {
     }
 }
 
+#[must_use]
 pub fn query_selector_all<'a, 'b>(
     element: &'a Element<'b>,
     matching: &Selector,
@@ -55,6 +56,7 @@ pub fn query_selector_all<'a, 'b>(
     found
 }
 
+#[must_use]
 pub fn query_selector<'a>(
     element: &'a Element<'a>,
     matching: &Selector,
@@ -97,6 +99,9 @@ pub struct Selector<'a> {
 }
 
 impl<'a> Selector<'a> {
+    /// # Panics
+    ///
+    /// Will panic if not valid selector (or reached unimplemented branch)
     pub fn from_string(from: &'a str) -> Self {
         let mut idx = 0;
         let tag = if from.starts_with(['*', '[', '.', '#']) {
@@ -119,7 +124,6 @@ impl<'a> Selector<'a> {
         };
         let mut attributes: Vec<(&str, AttributeQuery, &str)> = Vec::new();
         while idx < from.len() {
-            // eprintln!("Incoming {:?}", &from[idx..]);
             let next = from[idx..].chars().next().unwrap();
             let rest = &from[idx + next.len_utf8()..];
             idx += next.len_utf8();
@@ -191,9 +195,7 @@ impl<'a> Selector<'a> {
                                     break;
                                 }
                             }
-                            if !found {
-                                panic!();
-                            }
+                            assert!(found,);
                             break;
                         }
                     }
@@ -205,9 +207,10 @@ impl<'a> Selector<'a> {
     }
 }
 
+#[must_use]
 pub fn matches(element: &Element, selector: &Selector) -> bool {
-    let tag = if let Some(ref tag) = selector.tag {
-        tag == &element.tag_name
+    let tag = if let Some(tag) = selector.tag {
+        tag == element.tag_name
     } else {
         true
     };
@@ -223,7 +226,7 @@ pub fn matches(element: &Element, selector: &Selector) -> bool {
                 match kind {
                     AttributeQuery::Exactly => value == expected_value,
                     AttributeQuery::ExactlyBeforeHyphen => {
-                        let value: &str = value.split_once("-").map_or(value, |(left, _)| left);
+                        let value: &str = value.split_once('-').map_or(value, |(left, _)| left);
                         value == *expected_value
                     }
                     AttributeQuery::Contains => value.contains(expected_value),

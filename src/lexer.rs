@@ -4,6 +4,7 @@ pub struct Lexer<'a> {
 }
 
 impl<'a> Lexer<'a> {
+    #[must_use]
     pub fn new(on: &'a str) -> Self {
         Self { on, head: 0 }
     }
@@ -27,6 +28,9 @@ impl<'a> Lexer<'a> {
         self.current().starts_with(slice)
     }
 
+    /// # Errors
+    ///
+    /// Will return `Err` if reached end of parse buffer without finding `slice`
     pub fn parse_until(&mut self, slice: &str, advance: bool) -> Result<&'a str, u32> {
         let current = self.current();
         let start = self.head;
@@ -89,7 +93,10 @@ impl<'a> Lexer<'a> {
         Err(start)
     }
 
-    // Above modified to check `then`
+    /// Above modified to check `then`
+    /// # Errors
+    ///
+    /// Will return `Err` if reached end of parse buffer without finding `slice`
     pub fn parse_until_postfix(&mut self, slice: &str, then: &str) -> Result<&'a str, u32> {
         let current = self.current();
         let start = self.head;
@@ -103,23 +110,30 @@ impl<'a> Lexer<'a> {
         Err(start)
     }
 
+    #[must_use]
     pub fn current(&self) -> &'a str {
         self.current_with_offset(0)
     }
 
+    #[must_use]
     pub fn consumed(&self) -> u32 {
         self.head
     }
 
+    #[must_use]
     pub fn is_finished(&self) -> bool {
         self.head as usize == self.on.len()
     }
 
+    #[must_use]
     pub fn current_with_offset(&self, offset: u32) -> &'a str {
         unsafe { self.on.get_unchecked((self.head + offset) as usize..) }
         // &self.on[self.head as usize..]
     }
 
+    /// # Errors
+    ///
+    /// Will return `Err` if reached end of parse buffer without finding string delimeter
     pub fn parse_string_literal(&mut self) -> Result<&'a str, u32> {
         let mut chars = self.current().chars();
         let start = self.head;
@@ -149,13 +163,15 @@ impl<'a> Lexer<'a> {
                 let slice = &self.on[(self.head as usize + 1)..(self.head as usize + consumed)];
                 self.head += consumed as u32 + 1;
                 return Ok(slice);
-            } else {
-                escaped = matches!(chr, '\\');
             }
+            escaped = matches!(chr, '\\');
         }
         Err(start)
     }
 
+    /// # Errors
+    ///
+    /// Will return `Err` if reached end of parse buffer without finding identifier terminator
     pub fn parse_identifier(&mut self, position: &str) -> Result<&'a str, u32> {
         let current = self.current();
         let chars = current.char_indices();
@@ -183,6 +199,7 @@ impl<'a> Lexer<'a> {
         Err(start)
     }
 
+    #[must_use]
     pub fn parse_opening_tag_no_advance(&self) -> Option<&'a str> {
         let current = self.current().trim_start();
         if let Some(rest) = current.strip_prefix('<') {
@@ -197,6 +214,7 @@ impl<'a> Lexer<'a> {
         }
     }
 
+    #[must_use]
     pub fn parse_closing_tag_no_advance(&self) -> Option<&'a str> {
         let current = self.current().trim_start();
         if let Some(rest) = current.strip_prefix("</") {
@@ -237,6 +255,9 @@ impl<'a> Lexer<'a> {
         None
     }
 
+    /// # Errors
+    ///
+    /// Will return `Err` if chr is not at head of parse buffer
     pub fn expect(&mut self, chr: char) -> Result<(), u32> {
         self.skip();
         if self.current().starts_with(chr) {
@@ -251,6 +272,7 @@ impl<'a> Lexer<'a> {
         self.head += distance;
     }
 
+    #[must_use]
     pub fn after_comments(&self) -> &str {
         todo!()
     }

@@ -1,4 +1,4 @@
-use super::*;
+use super::{Cow, Element, ElementChildren, Node};
 
 fn inner_text_element_(element: &Element, buf: &mut String) {
     if let "math" | "svg" | "title" = element.tag_name {
@@ -29,12 +29,14 @@ fn inner_text_(node: &Node, buf: &mut String) {
     }
 }
 
+#[must_use]
 pub fn inner_text(node: &Node) -> String {
     let mut s = String::new();
     inner_text_(node, &mut s);
     s
 }
 
+#[must_use]
 pub fn inner_text_element(element: &Element) -> String {
     let mut s = String::new();
     inner_text_element_(element, &mut s);
@@ -42,6 +44,9 @@ pub fn inner_text_element(element: &Element) -> String {
 }
 
 /// Modified version of <https://github.com/parcel-bundler/parcel/blob/f86f5f27c3a6553e70bd35652f19e6ab8d8e4e4a/crates/dev-dep-resolver/src/lib.rs#L368-L380>
+/// # Panics
+///
+/// Will panic if trying to decode character that is invalid code
 #[must_use]
 pub fn unescape_string_content(on: &str) -> Cow<'_, str> {
     let mut result = Cow::Borrowed("");
@@ -98,9 +103,7 @@ pub fn unescape_string_content(on: &str) -> Cow<'_, str> {
                     break;
                 }
             }
-            if !found {
-                panic!()
-            }
+            assert!(found,);
         }
     }
     result += &on[start..];

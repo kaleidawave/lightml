@@ -5,8 +5,12 @@ use crate::{
 };
 
 #[cfg_attr(target_family = "wasm", wasm_bindgen::prelude::wasm_bindgen)]
-pub fn retrieve(content: String, query: String) -> String {
-    let mut reader = Lexer::new(&content);
+#[must_use]
+/// # Panics
+///
+/// Will panic if failed for parse document
+pub fn retrieve(content: &str, query: &str) -> String {
+    let mut reader = Lexer::new(content);
     let result = Document::from_reader(&mut reader);
     let document = result.expect("failed to parse document");
 
@@ -17,7 +21,7 @@ pub fn retrieve(content: String, query: String) -> String {
             let selector = Selector::from_string(selector.trim());
             current = current
                 .into_iter()
-                .flat_map(|element| query_selector(element, &selector))
+                .filter_map(|element| query_selector(element, &selector))
                 .collect();
         } else if let Some(selector) = query.strip_prefix("all ") {
             let selector = Selector::from_string(selector.trim());
@@ -61,7 +65,8 @@ pub fn retrieve(content: String, query: String) -> String {
                     } else {
                         &[]
                     };
-                if let Some(children) = rows.iter().find_map(|child| {
+
+                let table_body = rows.iter().find_map(|child| {
                     if let Node::Element(Element {
                         tag_name, children, ..
                     }) = child
@@ -70,10 +75,10 @@ pub fn retrieve(content: String, query: String) -> String {
                     } else {
                         None
                     }
-                }) {
-                    if let ElementChildren::Children(ref children) = children {
-                        rows = children;
-                    }
+                });
+
+                if let Some(ElementChildren::Children(ref children)) = table_body {
+                    rows = children;
                 }
                 for child in rows {
                     if let Node::Element(Element { children, .. }) = child {

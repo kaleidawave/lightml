@@ -7,10 +7,10 @@ use codespan_reporting::term::{
 };
 
 fn main() -> std::process::ExitCode {
-    let example = r#"<div>
+    let example = r"<div>
     <p>Hi
 <p>Something
-</div>"#;
+</div>";
 
     // If arg use that file, else use example above
     let path = std::env::args().nth(1);

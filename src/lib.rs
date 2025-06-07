@@ -1,4 +1,4 @@
-#![allow(clippy::result_unit_err)]
+#![allow(clippy::result_unit_err, clippy::cast_possible_truncation)]
 #![doc = include_str!("../README.md")]
 
 pub use lexer::Lexer;
@@ -39,7 +39,7 @@ pub enum Node<'a> {
     MismatchClosingTag(&'a str),
 }
 
-impl<'a> Node<'a> {
+impl Node<'_> {
     pub fn child_at(&self, matcher: impl matching::Matcher) -> Option<&Node> {
         if let Node::Element(element) = self {
             element.children.child_at(matcher)
@@ -100,7 +100,7 @@ pub enum ElementChildren<'a> {
     SelfClosing,
 }
 
-impl<'a> ElementChildren<'a> {
+impl ElementChildren<'_> {
     pub fn child_at(&self, matcher: impl matching::Matcher) -> Option<&Node> {
         match self {
             ElementChildren::Children(children) => matcher.extract(children),
@@ -133,6 +133,9 @@ fn parse_doctype(reader: &mut crate::Lexer<'_>) {
 }
 
 impl<'a> Document<'a> {
+    /// # Errors
+    ///
+    /// Will return `Err` for invalid HTML documents
     pub fn from_reader(reader: &mut crate::Lexer<'a>) -> ParseResult<Self> {
         parse_doctype(reader);
         Element::from_reader(reader, &mut Vec::new()).map(|html_element| Document { html_element })
@@ -140,6 +143,10 @@ impl<'a> Document<'a> {
 }
 
 impl<'a> Element<'a> {
+    /// # Errors
+    ///
+    /// Will return `Err` for invalid HTML elements
+    #[allow(clippy::too_many_lines)]
     pub fn from_reader(
         reader: &mut crate::Lexer<'a>,
         scope: &mut ContextChain,
@@ -173,57 +180,54 @@ impl<'a> Element<'a> {
                     attributes,
                     children: ElementChildren::SelfClosing,
                 });
-            } else {
-                // TODO extras here
-                let key =
-                    reader
-                        .parse_identifier("Attribute key")
-                        .map_err(|at| HTMLParseError {
+            }
+            // TODO extras here
+            let key = reader
+                .parse_identifier("Attribute key")
+                .map_err(|at| HTMLParseError {
+                    reason: HTMLParseErrorReason::InvalidIdentifier,
+                    at,
+                    context: vec![ContextItem {
+                        tag_name: tag_name.to_owned(),
+                        at: start,
+                    }],
+                })?;
+
+            let attribute = if reader.is_operator_advance("=") {
+                if reader.starts_with_string_delimeter() {
+                    let content = reader.parse_string_literal().map_err(|at| HTMLParseError {
+                        reason: HTMLParseErrorReason::NoEndToStringDelimeter,
+                        at,
+                        context: scope.clone(),
+                    })?;
+                    Attribute {
+                        key,
+                        value: content,
+                    }
+                } else {
+                    let content = reader.parse_identifier("Attribute value").map_err(|at| {
+                        HTMLParseError {
                             reason: HTMLParseErrorReason::InvalidIdentifier,
                             at,
                             context: vec![ContextItem {
                                 tag_name: tag_name.to_owned(),
                                 at: start,
                             }],
-                        })?;
-
-                let attribute = if reader.is_operator_advance("=") {
-                    if reader.starts_with_string_delimeter() {
-                        let content =
-                            reader.parse_string_literal().map_err(|at| HTMLParseError {
-                                reason: HTMLParseErrorReason::NoEndToStringDelimeter,
-                                at,
-                                context: scope.clone(),
-                            })?;
-                        Attribute {
-                            key,
-                            value: content,
                         }
-                    } else {
-                        let content = reader.parse_identifier("Attribute value").map_err(|at| {
-                            HTMLParseError {
-                                reason: HTMLParseErrorReason::InvalidIdentifier,
-                                at,
-                                context: vec![ContextItem {
-                                    tag_name: tag_name.to_owned(),
-                                    at: start,
-                                }],
-                            }
-                        })?;
-                        Attribute {
-                            key,
-                            value: content,
-                        }
-                    }
-                } else {
-                    // Boolean attribute
+                    })?;
                     Attribute {
                         key,
-                        value: Default::default(),
+                        value: content,
                     }
-                };
-                attributes.push(attribute);
-            }
+                }
+            } else {
+                // Boolean attribute
+                Attribute {
+                    key,
+                    value: Default::default(),
+                }
+            };
+            attributes.push(attribute);
         }
 
         if html_tag_is_self_closing(tag_name) {
@@ -280,9 +284,13 @@ impl<'a> Element<'a> {
             });
 
             let children = children_from_reader(reader, scope)?;
+            #[cfg(debug_assertions)]
+            {
+                let popped = scope.pop();
+                debug_assert!(popped.is_some_and(|t| tag_name == t.tag_name));
+            }
+            #[cfg(not(debug_assertions))]
             let _popped = scope.pop();
-
-            debug_assert!(_popped.is_some_and(|t| tag_name == t.tag_name));
 
             if let Some(closing_tag_name) = reader.parse_closing_tag_no_advance() {
                 if tag_name == closing_tag_name {
@@ -306,6 +314,9 @@ impl<'a> Element<'a> {
     }
 
     /// Also returns how many bytes parsed
+    /// # Errors
+    ///
+    /// Will return `Err` for invalid HTML elements
     pub fn from_string(content: &'a str) -> ParseResult<(Self, u32)> {
         let mut lexer = Lexer::new(content);
         let element = Self::from_reader(&mut lexer, &mut Vec::new())?;
@@ -320,7 +331,10 @@ pub struct Attribute<'a> {
 }
 
 impl<'a> Attribute<'a> {
-    // Not used in main loop for now
+    /// Not used in main loop for now
+    /// # Errors
+    ///
+    /// Will return `Err` for invalid attributes
     pub fn from_reader(reader: &mut crate::Lexer<'a>) -> ParseResult<Self> {
         let key = reader
             .parse_identifier("Attribute key")
