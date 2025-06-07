@@ -27,3 +27,6 @@ js-sys = "0.3"
 codespan-reporting = "0.12.0"
 simple-markdown-parser = "0.0.7"
 pretty_assertions = "1.4.1"
+
+[lints.clippy]
+pedantic = "deny"
