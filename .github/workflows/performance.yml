@@ -35,21 +35,16 @@ jobs:
       - name: Get file
         run: curl -sS $URL > out.html
         env:
-          URL: "https://www.bbc.co.uk/news"
-
-      - name: (temp) check things
-        run: git log
+          URL: "https://gist.githubusercontent.com/kaleidawave/643854be768e5c11196247cde8daa1d0/raw/2da32a579ab92721d277e1ee8c8d5cf3f4552ec7/bbc.html"
       
       - name: Build binaries
         run: |
           for git tag --list "performance/*" each
-            echo "Checking out $tag"
-            run git checkout tags/$tag
+            echo run git checkout tags/$tag
+            let name = replace $tag "/" "-"
             echo "Building parse-$name from $tag"
             echo run cargo build --release --example parse
-            let name = replace $tag "/" "-"
-            # Temporary
-            echo run stat ./target/release/examples/parse
+            # echo run stat ./target/release/examples/parse
             move ./target/release/examples/parse "binaries/parse-$name"
         shell: shell-language {0}
 
@@ -58,7 +53,7 @@ jobs:
         run: |
           for files "binaries/*" each
             let out = run "./$file" $INPUT --check
-            echo run stat "./$file"
+            # echo run stat "./$file"
             echo "Running $file"
             echo $out
         shell: shell-language {0}
@@ -69,11 +64,11 @@ jobs:
         run: |
           let binaries = files "binaries/*"
           let binaries = replace $binaries "\n" ","
-          echo "binaries: $binaries"
-          let output = run hyperfine -i -L binary $binaries './{binary} $INPUT --check'
+          # echo "binaries: $binaries"
+          let output = run stdout hyperfine -i -L binary $binaries './{binary} $INPUT --check'
           let to = env GITHUB_STEP_SUMMARY
-          append $to "### Performance results\n"
-          append $to "```\n$output```"
+          append $to "# Performance results"
+          append $to "```shell\n$output```"
         shell: shell-language {0}
         env:
           INPUT: "out.html"
@@ -81,15 +76,30 @@ jobs:
       - name: Memory usage
         continue-on-error: true
         run: |
+          let to = env GITHUB_STEP_SUMMARY
+          append $to "## Memory usage"
           for files "binaries/*" each
             echo "Running $file"
-            echo run valgrind --tool=callgrind $file $INPUT
+            let output = run valgrind $file $INPUT --check
+            let allocated = regexp $output "(?<bytes>[\\d,]+) bytes allocated" extract bytes
+            let allocated = replace $allocated "," ""
+            let allocated = format_number $allocated
+            append $to "- `$file`: `$allocated` allocated"
         shell: shell-language {0}
-        
+        env:
+          INPUT: "out.html"
+
       - name: Instruction count
         continue-on-error: true
         run: |
+          let to = env GITHUB_STEP_SUMMARY
+          append $to "## Instruction count"
           for files "binaries/*" each
             echo "Running $file"
-            echo run valgrind $file $INPUT
+            let output = run valgrind --tool=callgrind $file $INPUT --check
+            let instructions = regexp $output "Collected: (?<name>\d+?)\\b" extract name
+            let instructions = format_number $instructions
+            append $to "- `$file`: `$instructions` instructions"
         shell: shell-language {0}
+        env:
+          INPUT: "out.html"
