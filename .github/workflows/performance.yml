@@ -65,7 +65,7 @@ jobs:
           let binaries = files "binaries/*"
           let binaries = replace $binaries "\n" ","
           # echo "binaries: $binaries"
-          let output = run stdout hyperfine -i -L binary $binaries './{binary} $INPUT --check'
+          let output = run hyperfine -i -L binary $binaries './{binary} $INPUT --check'
           let to = env GITHUB_STEP_SUMMARY
           append $to "# Performance results"
           append $to "```shell\n$output```"
