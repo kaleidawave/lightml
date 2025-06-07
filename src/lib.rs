@@ -1,13 +1,22 @@
 #![allow(clippy::result_unit_err, clippy::cast_possible_truncation)]
 #![doc = include_str!("../README.md")]
 
-pub use lexer::Lexer;
-use std::borrow::Cow;
-
 mod lexer;
 pub mod matching;
 pub mod operations;
 pub mod retrieval;
+
+pub use lexer::Lexer;
+use std::borrow::Cow;
+
+// Allocation
+use bumpalo::Bump;
+
+#[cfg(not(feature = "nightly"))]
+use allocator_api2::vec::Vec;
+
+#[cfg(feature = "nightly")]
+use std::alloc::Allocator;
 
 type ParseResult<T> = Result<T, HTMLParseError>;
 
@@ -21,7 +30,7 @@ pub struct ContextItem {
 pub struct HTMLParseError {
     pub reason: HTMLParseErrorReason,
     pub at: u32,
-    pub context: Vec<ContextItem>,
+    pub context: std::vec::Vec<ContextItem>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -49,10 +58,15 @@ impl Node<'_> {
     }
 }
 
-pub type ContextChain = Vec<ContextItem>;
+pub type ContextChain = std::vec::Vec<ContextItem>;
+pub type Allocator2 = Bump;
 
 impl<'a> Node<'a> {
-    fn from_reader(reader: &mut crate::Lexer<'a>, scope: &mut ContextChain) -> ParseResult<Self> {
+    fn from_reader(
+        reader: &mut crate::Lexer<'a>,
+        scope: &mut ContextChain,
+        allocator: &'a Allocator2,
+    ) -> ParseResult<Self> {
         // Comments
         if reader.starts_with_no_advance("<!--") {
             reader.skip();
@@ -66,7 +80,7 @@ impl<'a> Node<'a> {
                 })?;
             Ok(Node::Comment(content))
         } else if reader.starts_with_no_advance("<") {
-            let element = Element::from_reader(reader, scope)?;
+            let element = Element::from_reader(reader, scope, allocator)?;
             Ok(Node::Element(element))
         } else {
             let content = reader
@@ -85,11 +99,11 @@ impl<'a> Node<'a> {
 pub struct Element<'a> {
     /// Name of the element
     pub tag_name: &'a str,
-    pub attributes: Vec<Attribute<'a>>,
+    pub attributes: Vec<Attribute<'a>, &'a Allocator2>,
     pub children: ElementChildren<'a>,
 }
 
-pub type Children<'a> = Vec<Node<'a>>;
+pub type Children<'a> = Vec<Node<'a>, &'a Allocator2>;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ElementChildren<'a> {
@@ -136,9 +150,13 @@ impl<'a> Document<'a> {
     /// # Errors
     ///
     /// Will return `Err` for invalid HTML documents
-    pub fn from_reader(reader: &mut crate::Lexer<'a>) -> ParseResult<Self> {
+    pub fn from_reader(
+        reader: &mut crate::Lexer<'a>,
+        allocator: &'a Allocator2,
+    ) -> ParseResult<Self> {
         parse_doctype(reader);
-        Element::from_reader(reader, &mut Vec::new()).map(|html_element| Document { html_element })
+        Element::from_reader(reader, &mut std::vec::Vec::new(), allocator)
+            .map(|html_element| Document { html_element })
     }
 }
 
@@ -150,6 +168,7 @@ impl<'a> Element<'a> {
     pub fn from_reader(
         reader: &mut crate::Lexer<'a>,
         scope: &mut ContextChain,
+        allocator: &'a Allocator2,
     ) -> ParseResult<Self> {
         reader.skip();
         let start = reader.consumed();
@@ -163,10 +182,10 @@ impl<'a> Element<'a> {
             .map_err(|at| HTMLParseError {
                 reason: HTMLParseErrorReason::InvalidIdentifier,
                 at,
-                context: Vec::new(),
+                context: std::vec::Vec::new(),
             })?;
 
-        let mut attributes = Vec::new();
+        let mut attributes = Vec::new_in(allocator);
         // Kind of weird / not clear conditions for breaking out of while loop
         loop {
             reader.skip();
@@ -187,7 +206,7 @@ impl<'a> Element<'a> {
                 .map_err(|at| HTMLParseError {
                     reason: HTMLParseErrorReason::InvalidIdentifier,
                     at,
-                    context: vec![ContextItem {
+                    context: std::vec![ContextItem {
                         tag_name: tag_name.to_owned(),
                         at: start,
                     }],
@@ -209,7 +228,7 @@ impl<'a> Element<'a> {
                         HTMLParseError {
                             reason: HTMLParseErrorReason::InvalidIdentifier,
                             at,
-                            context: vec![ContextItem {
+                            context: std::vec![ContextItem {
                                 tag_name: tag_name.to_owned(),
                                 at: start,
                             }],
@@ -283,7 +302,7 @@ impl<'a> Element<'a> {
                 at: start,
             });
 
-            let children = children_from_reader(reader, scope)?;
+            let children = children_from_reader(reader, scope, allocator)?;
             #[cfg(debug_assertions)]
             {
                 let popped = scope.pop();
@@ -298,7 +317,7 @@ impl<'a> Element<'a> {
                     reader.expect('>').map_err(|at| HTMLParseError {
                         reason: HTMLParseErrorReason::Expected { slice: ">" },
                         at,
-                        context: Vec::new(),
+                        context: std::vec::Vec::new(),
                     })?;
                 } else {
                     // TODO function should check. This is a valid path for mismatched tags
@@ -317,9 +336,9 @@ impl<'a> Element<'a> {
     /// # Errors
     ///
     /// Will return `Err` for invalid HTML elements
-    pub fn from_string(content: &'a str) -> ParseResult<(Self, u32)> {
+    pub fn from_string(content: &'a str, allocator: &'a Allocator2) -> ParseResult<(Self, u32)> {
         let mut lexer = Lexer::new(content);
-        let element = Self::from_reader(&mut lexer, &mut Vec::new())?;
+        let element = Self::from_reader(&mut lexer, &mut std::vec::Vec::new(), allocator)?;
         Ok((element, lexer.consumed()))
     }
 }
@@ -341,14 +360,14 @@ impl<'a> Attribute<'a> {
             .map_err(|at| HTMLParseError {
                 reason: HTMLParseErrorReason::InvalidIdentifier,
                 at,
-                context: Vec::new(),
+                context: std::vec::Vec::new(),
             })?;
 
         if reader.is_operator_advance("=") {
             if reader.starts_with_string_delimeter() {
                 let content = reader.parse_string_literal().map_err(|at| HTMLParseError {
                     reason: HTMLParseErrorReason::NoEndToStringDelimeter,
-                    context: Vec::new(),
+                    context: std::vec::Vec::new(),
                     at,
                 })?;
                 Ok(Attribute {
@@ -362,7 +381,7 @@ impl<'a> Attribute<'a> {
                         slice: "string delimeter",
                     },
                     at,
-                    context: Vec::new(),
+                    context: std::vec::Vec::new(),
                 })
             }
         } else {
@@ -378,8 +397,9 @@ impl<'a> Attribute<'a> {
 fn children_from_reader<'a>(
     reader: &mut crate::Lexer<'a>,
     scope: &mut ContextChain,
-) -> ParseResult<Vec<Node<'a>>> {
-    let mut children = Vec::new();
+    allocator: &'a Allocator2,
+) -> ParseResult<Vec<Node<'a>, &'a Allocator2>> {
+    let mut children = Vec::new_in(allocator);
     loop {
         if let Some(closing_tag_name) = reader.parse_closing_tag_no_advance() {
             let _whitespace = reader.parse_whitespace();
@@ -394,7 +414,7 @@ fn children_from_reader<'a>(
             reader.expect('>').map_err(|at| HTMLParseError {
                 reason: HTMLParseErrorReason::Expected { slice: ">" },
                 at,
-                context: Vec::new(),
+                context: std::vec::Vec::new(),
             })?;
             continue;
         }
@@ -439,7 +459,7 @@ fn children_from_reader<'a>(
             }
         }
 
-        let node = Node::from_reader(reader, scope)?;
+        let node = Node::from_reader(reader, scope, allocator)?;
         if let Node::TextNode(content) = node {
             if content.trim().is_empty() {
                 continue;

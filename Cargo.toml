@@ -10,6 +10,7 @@ categories = ["parsing", "web-programming"]
 
 [features]
 markdown_code_blocks_in_html = []
+nightly = []
 
 [lib]
 crate-type = ["cdylib", "rlib"]
@@ -27,6 +28,10 @@ js-sys = "0.3"
 codespan-reporting = "0.12.0"
 simple-markdown-parser = "0.0.7"
 pretty_assertions = "1.4.1"
+
+[dependencies]
+allocator-api2 = "0.2.21"
+bumpalo = { version = "3.17.0", features = ["allocator-api2", "collections"] }
 
 [lints.clippy]
 pedantic = "deny"

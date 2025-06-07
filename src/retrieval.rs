@@ -11,7 +11,8 @@ use crate::{
 /// Will panic if failed for parse document
 pub fn retrieve(content: &str, query: &str) -> String {
     let mut reader = Lexer::new(content);
-    let result = Document::from_reader(&mut reader);
+    let allocator = bumpalo::Bump::new();
+    let result = Document::from_reader(&mut reader, &allocator);
     let document = result.expect("failed to parse document");
 
     let mut current: Vec<&Element> = vec![&document.html_element];
