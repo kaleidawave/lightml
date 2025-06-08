@@ -1,10 +1,39 @@
-use super::{Attribute, Element, ElementChildren, Node};
+use super::{Attribute, Children, Element, ElementChildren, Node};
 
-pub fn query_selector_all<'a>(element: &'a Element, matching: &Selector) -> Vec<&'a Element> {
-    fn query_selector_all_<'a>(
-        element: &'a Element,
+pub trait Matcher {
+    fn extract<'a, 'b>(self, children: &'b Children<'a>) -> Option<&'b Node<'a>>;
+}
+
+impl Matcher for usize {
+    fn extract<'a, 'b>(self, children: &'b Children<'a>) -> Option<&'b Node<'a>> {
+        children.get(self)
+    }
+}
+
+pub struct TagName<'a>(pub &'a str);
+
+impl Matcher for TagName<'_> {
+    fn extract<'a, 'b>(self, children: &'b Children<'a>) -> Option<&'b Node<'a>> {
+        for child in children {
+            if let Node::Element(element) = child {
+                if element.tag_name == self.0 {
+                    return Some(child);
+                }
+            }
+        }
+        None
+    }
+}
+
+#[must_use]
+pub fn query_selector_all<'a, 'b>(
+    element: &'a Element<'b>,
+    matching: &Selector,
+) -> Vec<&'a Element<'b>> {
+    fn query_selector_all_<'a, 'b>(
+        element: &'a Element<'b>,
         matching: &Selector,
-        found: &mut Vec<&'a Element>,
+        found: &mut Vec<&'a Element<'b>>,
     ) {
         if matches(element, matching) {
             found.push(element);
@@ -16,7 +45,7 @@ pub fn query_selector_all<'a>(element: &'a Element, matching: &Selector) -> Vec<
                     Node::Element(element) => {
                         query_selector_all_(element, matching, found);
                     }
-                    Node::TextNode(..) | Node::Comment(..) => {}
+                    Node::TextNode(..) | Node::Comment(..) | Node::MismatchClosingTag(..) => {}
                 }
             }
         }
@@ -27,7 +56,11 @@ pub fn query_selector_all<'a>(element: &'a Element, matching: &Selector) -> Vec<
     found
 }
 
-pub fn query_selector<'a>(element: &'a Element, matching: &Selector) -> Option<&'a Element> {
+#[must_use]
+pub fn query_selector<'a>(
+    element: &'a Element<'a>,
+    matching: &Selector,
+) -> Option<&'a Element<'a>> {
     if matches(element, matching) {
         return Some(element);
     }
@@ -40,7 +73,7 @@ pub fn query_selector<'a>(element: &'a Element, matching: &Selector) -> Option<&
                         return v;
                     }
                 }
-                Node::TextNode(..) | Node::Comment(..) => {}
+                Node::TextNode(..) | Node::Comment(..) | Node::MismatchClosingTag(..) => {}
             }
         }
     }
@@ -48,6 +81,7 @@ pub fn query_selector<'a>(element: &'a Element, matching: &Selector) -> Option<&
     None
 }
 
+/// [See selector notation](https://developer.mozilla.org/en-US/docs/Web/CSS/Attribute_selectors)
 #[derive(Debug, Clone, Copy)]
 pub enum AttributeQuery {
     Exactly,
@@ -65,6 +99,9 @@ pub struct Selector<'a> {
 }
 
 impl<'a> Selector<'a> {
+    /// # Panics
+    ///
+    /// Will panic if not valid selector (or reached unimplemented branch)
     pub fn from_string(from: &'a str) -> Self {
         let mut idx = 0;
         let tag = if from.starts_with(['*', '[', '.', '#']) {
@@ -87,7 +124,6 @@ impl<'a> Selector<'a> {
         };
         let mut attributes: Vec<(&str, AttributeQuery, &str)> = Vec::new();
         while idx < from.len() {
-            // eprintln!("Incoming {:?}", &from[idx..]);
             let next = from[idx..].chars().next().unwrap();
             let rest = &from[idx + next.len_utf8()..];
             idx += next.len_utf8();
@@ -95,18 +131,26 @@ impl<'a> Selector<'a> {
                 '.' => {
                     let mut len = rest.len();
                     for (i, chr) in rest.char_indices() {
-                        if !(chr.is_alphanumeric() || matches!(chr, '-' | '_')) {
+                        let valid_class_name = chr.is_alphanumeric() || matches!(chr, '-' | '_');
+                        if !valid_class_name {
                             len = i;
                             break;
                         }
                     }
                     idx += len;
-                    attributes.push(("class", AttributeQuery::Exactly, &rest[..len]));
+                    // important `ContainsWhitespaceSplit` not `Exactly`
+                    attributes.push((
+                        "class",
+                        AttributeQuery::ContainsWhitespaceSplit,
+                        &rest[..len],
+                    ));
                 }
                 '#' => {
                     let mut len = rest.len();
                     for (i, chr) in rest.char_indices() {
-                        if !(chr.is_alphanumeric() || matches!(chr, '-' | '_')) {
+                        let valid_identifier_name =
+                            chr.is_alphanumeric() || matches!(chr, '-' | '_');
+                        if !valid_identifier_name {
                             len = i;
                             break;
                         }
@@ -130,6 +174,7 @@ impl<'a> Selector<'a> {
                                 [b'^', b'=', ..] => (AttributeQuery::Prefixed, 2),
                                 [b'$', b'=', ..] => (AttributeQuery::Suffixed, 2),
                                 [b'|', b'=', ..] => (AttributeQuery::ExactlyBeforeHyphen, 2),
+                                [b'*', b'=', ..] => (AttributeQuery::Contains, 2),
                                 [b'=', ..] => (AttributeQuery::Exactly, 1),
                                 _ => {
                                     todo!("{rest}");
@@ -150,9 +195,7 @@ impl<'a> Selector<'a> {
                                     break;
                                 }
                             }
-                            if !found {
-                                panic!();
-                            }
+                            assert!(found,);
                             break;
                         }
                     }
@@ -164,9 +207,10 @@ impl<'a> Selector<'a> {
     }
 }
 
+#[must_use]
 pub fn matches(element: &Element, selector: &Selector) -> bool {
-    let tag = if let Some(ref tag) = selector.tag {
-        tag == &element.tag_name
+    let tag = if let Some(tag) = selector.tag {
+        tag == element.tag_name
     } else {
         true
     };
@@ -182,9 +226,7 @@ pub fn matches(element: &Element, selector: &Selector) -> bool {
                 match kind {
                     AttributeQuery::Exactly => value == expected_value,
                     AttributeQuery::ExactlyBeforeHyphen => {
-                        let value: &str = value
-                            .split_once("-")
-                            .map_or(value.as_str(), |(left, _)| left);
+                        let value: &str = value.split_once('-').map_or(value, |(left, _)| left);
                         value == *expected_value
                     }
                     AttributeQuery::Contains => value.contains(expected_value),

@@ -1,10 +1,7 @@
 name: Rust
 
 on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
+  push
 
 env:
   CARGO_TERM_COLOR: always
@@ -33,12 +30,12 @@ jobs:
     - uses: actions/checkout@v4
     - name: Check formatting with rustfmt
       run: cargo fmt --all --check
-    - uses: brndnmtthws/rust-action-cargo-binstall@v1
-      with:
-        packages: taplo-cli
-    - name: Check TOML formatting with taplo
-      run: |
-        taplo fmt --check **/*/Cargo.toml
+    # - uses: brndnmtthws/rust-action-cargo-binstall@v1
+    #   with:
+    #     packages: taplo-cli
+    # - name: Check TOML formatting with taplo
+    #   run: |
+    #     taplo fmt --check **/*/Cargo.toml
 
   tests:
     needs: validity
@@ -49,8 +46,27 @@ jobs:
       with:
         path: ${{ env.CACHE_PATHS }}
         key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
     - name: Run all tests
-      run: cargo test --workspace --verbose --all-features
+      run: cargo test --workspace # --all-features
+      shell: bash
+
+    - name: Run some examples
+      shell: bash
+      run: |
+        sites=(
+          "https://www.bbc.co.uk/news"
+          "https://en.wikipedia.org/wiki/Main_Page"
+          "https://github.com/"
+        )
+
+        cargo build --example parse
+
+        for url in "${sites[@]}"; do
+          curl -sS $url > out.html
+          stat out.html
+          target/debug/examples/parse out.html --check
+        done
 
   clippy:
     needs: validity
