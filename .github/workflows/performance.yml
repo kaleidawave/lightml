@@ -40,7 +40,7 @@ jobs:
       - name: Build binaries
         run: |
           for git tag --list "performance/*" each
-            echo run git checkout tags/$tag
+            echo run git checkout tags/$tag --force
             let name = replace $tag "/" "-"
             echo "Building parse-$name from $tag"
             echo run cargo build --release --example parse
@@ -68,7 +68,7 @@ jobs:
           let output = run hyperfine -i -L binary $binaries './{binary} $INPUT --check'
           let to = env GITHUB_STEP_SUMMARY
           append $to "# Performance results"
-          append $to "```shell\n$output```"
+          append $to "```shell\n$output\n```"
         shell: shell-language {0}
         env:
           INPUT: "out.html"
@@ -80,11 +80,12 @@ jobs:
           append $to "## Memory usage"
           for files "binaries/*" each
             echo "Running $file"
-            let output = run valgrind $file $INPUT --check
+            let output = run valgrind $file $INPUT --check --merge-stdout-and-stderr
             let allocated = regexp $output "(?<bytes>[\\d,]+) bytes allocated" extract bytes
-            let allocated = replace $allocated "," ""
-            let allocated = format_number $allocated
-            append $to "- `$file`: `$allocated` allocated"
+            echo "allocated='$allocated'"
+            # let allocated = replace $allocated "," ""
+            # let allocated = format_number $allocated
+            # append $to "- `$file`: `$allocated` allocated"
         shell: shell-language {0}
         env:
           INPUT: "out.html"
@@ -96,10 +97,11 @@ jobs:
           append $to "## Instruction count"
           for files "binaries/*" each
             echo "Running $file"
-            let output = run valgrind --tool=callgrind $file $INPUT --check
-            let instructions = regexp $output "Collected: (?<name>\d+?)\\b" extract name
-            let instructions = format_number $instructions
-            append $to "- `$file`: `$instructions` instructions"
+            let output = run valgrind --tool=callgrind $file $INPUT --check --merge-stdout-and-stderr
+            let instructions = regexp $output "Collected: (?<name>\\d+?)\\b" extract name
+            echo "instructions='$instructions'"
+            # let instructions = format_number $instructions
+            # append $to "- `$file`: `$instructions` instructions"
         shell: shell-language {0}
         env:
           INPUT: "out.html"

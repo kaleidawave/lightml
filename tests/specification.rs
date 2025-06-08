@@ -2,7 +2,8 @@ use lightml::{Document, Lexer};
 
 fn as_lines(content: &str) -> String {
     let mut reader = Lexer::new(content);
-    let result = Document::from_reader(&mut reader);
+    let allocator = bumpalo::Bump::new();
+    let result = Document::from_reader(&mut reader, &allocator);
     // TODO does this throw information away?
     let result = result.map(|document| document.html_element);
     format!("{result:#?}")
