@@ -9,9 +9,6 @@ pub mod retrieval;
 pub use lexer::Lexer;
 use std::borrow::Cow;
 
-// Allocation
-use bumpalo::Bump;
-
 #[cfg(not(feature = "nightly"))]
 use allocator_api2::{boxed::Box, vec::Vec};
 
@@ -59,7 +56,8 @@ impl Node<'_> {
 }
 
 pub type ContextChain = std::vec::Vec<ContextItem>;
-pub type Allocator = Bump;
+pub type Allocator = bumpalo::Bump;
+// pub type Allocator = allocator_api2::alloc::Global;
 
 impl<'a> Node<'a> {
     fn from_reader(

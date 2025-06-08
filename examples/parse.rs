@@ -37,11 +37,11 @@ fn main() -> std::process::ExitCode {
                 let writer = StandardStream::stderr(ColorChoice::Always);
                 let config = Config::default();
 
-                let allocator = Allocator::new();
+                let allocator = Allocator::default();
                 let mut lexer = Lexer::new(&content);
                 let result = Document::from_reader(&mut lexer, &allocator);
 
-                dbg!(content.len(), allocator.allocated_bytes());
+                // dbg!(content.len(), allocator.allocated_bytes());
 
                 match mode.as_str() {
                     "--text" => {

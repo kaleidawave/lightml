@@ -1,7 +1,7 @@
 use crate::{
     matching::{query_selector, query_selector_all, Selector},
     operations::{inner_text, inner_text_element},
-    Attribute, Document, Element, ElementChildren, Lexer, Node,
+    Allocator, Attribute, Document, Element, ElementChildren, Lexer, Node,
 };
 
 #[cfg_attr(target_family = "wasm", wasm_bindgen::prelude::wasm_bindgen)]
@@ -11,7 +11,7 @@ use crate::{
 /// Will panic if failed for parse document
 pub fn retrieve(content: &str, query: &str) -> String {
     let mut reader = Lexer::new(content);
-    let allocator = bumpalo::Bump::new();
+    let allocator = Allocator::default();
     let result = Document::from_reader(&mut reader, &allocator);
     let document = result.expect("failed to parse document");
 
