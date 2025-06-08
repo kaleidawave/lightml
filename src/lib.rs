@@ -13,7 +13,7 @@ use std::borrow::Cow;
 use bumpalo::Bump;
 
 #[cfg(not(feature = "nightly"))]
-use allocator_api2::vec::Vec;
+use allocator_api2::{boxed::Box, vec::Vec};
 
 #[cfg(feature = "nightly")]
 use std::alloc::Allocator as AllocatorTrait;
@@ -42,7 +42,7 @@ pub enum HTMLParseErrorReason {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Node<'a> {
-    Element(Element<'a>),
+    Element(Box<Element<'a>, &'a Allocator>),
     TextNode(&'a str),
     Comment(&'a str),
     MismatchClosingTag(&'a str),
@@ -81,7 +81,7 @@ impl<'a> Node<'a> {
             Ok(Node::Comment(content))
         } else if reader.starts_with_no_advance("<") {
             let element = Element::from_reader(reader, scope, allocator)?;
-            Ok(Node::Element(element))
+            Ok(Node::Element(Box::new_in(element, allocator)))
         } else {
             let content = reader
                 .parse_until("<", false)
