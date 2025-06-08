@@ -68,11 +68,8 @@ pub fn retrieve(content: &str, query: &str) -> String {
                     };
 
                 let table_body = rows.iter().find_map(|child| {
-                    if let Node::Element(Element {
-                        tag_name, children, ..
-                    }) = child
-                    {
-                        (*tag_name == "tbody").then_some(children)
+                    if let Node::Element(element) = child {
+                        (element.tag_name == "tbody").then_some(&element.children)
                     } else {
                         None
                     }
@@ -82,9 +79,9 @@ pub fn retrieve(content: &str, query: &str) -> String {
                     rows = children;
                 }
                 for child in rows {
-                    if let Node::Element(Element { children, .. }) = child {
+                    if let Node::Element(element) = child {
                         buf.push_str("\0r");
-                        if let ElementChildren::Children(ref children) = children {
+                        if let ElementChildren::Children(ref children) = element.children {
                             for element in children {
                                 buf.push_str("\0d");
                                 buf.push_str(&inner_text(element));

@@ -16,7 +16,7 @@ use bumpalo::Bump;
 use allocator_api2::vec::Vec;
 
 #[cfg(feature = "nightly")]
-use std::alloc::Allocator;
+use std::alloc::Allocator as AllocatorTrait;
 
 type ParseResult<T> = Result<T, HTMLParseError>;
 
@@ -59,13 +59,13 @@ impl Node<'_> {
 }
 
 pub type ContextChain = std::vec::Vec<ContextItem>;
-pub type Allocator2 = Bump;
+pub type Allocator = Bump;
 
 impl<'a> Node<'a> {
     fn from_reader(
         reader: &mut crate::Lexer<'a>,
         scope: &mut ContextChain,
-        allocator: &'a Allocator2,
+        allocator: &'a Allocator,
     ) -> ParseResult<Self> {
         // Comments
         if reader.starts_with_no_advance("<!--") {
@@ -99,11 +99,11 @@ impl<'a> Node<'a> {
 pub struct Element<'a> {
     /// Name of the element
     pub tag_name: &'a str,
-    pub attributes: Vec<Attribute<'a>, &'a Allocator2>,
+    pub attributes: Vec<Attribute<'a>, &'a Allocator>,
     pub children: ElementChildren<'a>,
 }
 
-pub type Children<'a> = Vec<Node<'a>, &'a Allocator2>;
+pub type Children<'a> = Vec<Node<'a>, &'a Allocator>;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ElementChildren<'a> {
@@ -123,11 +123,11 @@ impl ElementChildren<'_> {
     }
 }
 
-impl<'a> From<Element<'a>> for Node<'a> {
-    fn from(value: Element<'_>) -> Node<'_> {
-        Node::Element(value)
-    }
-}
+// impl<'a> From<Element<'a>> for Node<'a> {
+//     fn from(value: Element<'_>) -> Node<'_> {
+//         Node::Element(value)
+//     }
+// }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Document<'a> {
@@ -152,7 +152,7 @@ impl<'a> Document<'a> {
     /// Will return `Err` for invalid HTML documents
     pub fn from_reader(
         reader: &mut crate::Lexer<'a>,
-        allocator: &'a Allocator2,
+        allocator: &'a Allocator,
     ) -> ParseResult<Self> {
         parse_doctype(reader);
         Element::from_reader(reader, &mut std::vec::Vec::new(), allocator)
@@ -168,7 +168,7 @@ impl<'a> Element<'a> {
     pub fn from_reader(
         reader: &mut crate::Lexer<'a>,
         scope: &mut ContextChain,
-        allocator: &'a Allocator2,
+        allocator: &'a Allocator,
     ) -> ParseResult<Self> {
         reader.skip();
         let start = reader.consumed();
@@ -336,7 +336,7 @@ impl<'a> Element<'a> {
     /// # Errors
     ///
     /// Will return `Err` for invalid HTML elements
-    pub fn from_string(content: &'a str, allocator: &'a Allocator2) -> ParseResult<(Self, u32)> {
+    pub fn from_string(content: &'a str, allocator: &'a Allocator) -> ParseResult<(Self, u32)> {
         let mut lexer = Lexer::new(content);
         let element = Self::from_reader(&mut lexer, &mut std::vec::Vec::new(), allocator)?;
         Ok((element, lexer.consumed()))
@@ -397,8 +397,8 @@ impl<'a> Attribute<'a> {
 fn children_from_reader<'a>(
     reader: &mut crate::Lexer<'a>,
     scope: &mut ContextChain,
-    allocator: &'a Allocator2,
-) -> ParseResult<Vec<Node<'a>, &'a Allocator2>> {
+    allocator: &'a Allocator,
+) -> ParseResult<Vec<Node<'a>, &'a Allocator>> {
     let mut children = Vec::new_in(allocator);
     loop {
         if let Some(closing_tag_name) = reader.parse_closing_tag_no_advance() {

@@ -6,7 +6,7 @@ use codespan_reporting::term::{
     Config,
 };
 
-use bumpalo::Bump;
+use lightml::{operations, Allocator, Document, Lexer};
 
 fn main() -> std::process::ExitCode {
     let example = r"<div>
@@ -23,14 +23,7 @@ fn main() -> std::process::ExitCode {
     };
 
     let second_arg = std::env::args().nth(2);
-    let mode = second_arg
-        .and_then(|arg| {
-            matches!(arg.as_str(), "--verbose" | "--text" | "--check")
-                .then_some(&*arg[2..].to_owned().leak())
-        })
-        .unwrap_or_default();
-
-    use lightml::{operations, Document, Lexer};
+    let mode = second_arg.unwrap_or_default();
 
     const STACK_SIZE: usize = 8 * 1024 * 1024;
 
@@ -44,25 +37,44 @@ fn main() -> std::process::ExitCode {
                 let writer = StandardStream::stderr(ColorChoice::Always);
                 let config = Config::default();
 
-                let allocator = Bump::new();
+                let allocator = Allocator::new();
                 let mut lexer = Lexer::new(&content);
                 let result = Document::from_reader(&mut lexer, &allocator);
 
                 dbg!(content.len(), allocator.allocated_bytes());
 
-                match mode {
-                    "text" => {
+                match mode.as_str() {
+                    "--text" => {
                         eprintln!(
                             "Text: {text}",
                             text = operations::inner_text_element(&result.unwrap().html_element)
                         );
                         std::process::ExitCode::SUCCESS
                     }
-                    "verbose" => {
+                    "--count-character" => {
+                        let root = &result.unwrap().html_element;
+                        pub struct Counter(pub usize);
+
+                        impl operations::Walker for Counter {
+                            fn text_node(&mut self, content: &str) {
+                                self.0 += content.chars().filter(|chr| *chr == 'a').count();
+                            }
+
+                            fn attribute(&mut self, _key: &str, value: &str) {
+                                self.0 += value.chars().filter(|chr| *chr == 'a').count();
+                            }
+                        }
+
+                        let mut count = Counter(0);
+                        operations::walk_nodes_on_element(&root, &mut count);
+                        eprintln!("Found {count} 'a's", count = count.0);
+                        std::process::ExitCode::SUCCESS
+                    }
+                    "--verbose" => {
                         println!("{result:#?}");
                         std::process::ExitCode::SUCCESS
                     }
-                    "check" => match result {
+                    "--check" => match result {
                         Ok(_) => {
                             eprintln!("Parsed successfully");
                             std::process::ExitCode::SUCCESS

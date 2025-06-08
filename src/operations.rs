@@ -1,4 +1,4 @@
-use super::{Cow, Element, ElementChildren, Node};
+use super::{Attribute, Cow, Element, ElementChildren, Node};
 
 fn inner_text_element_(element: &Element, buf: &mut String) {
     if let "math" | "svg" | "title" = element.tag_name {
@@ -108,4 +108,34 @@ pub fn unescape_string_content(on: &str) -> Cow<'_, str> {
     }
     result += &on[start..];
     result
+}
+
+pub trait Walker {
+    fn text_node(&mut self, _content: &str) {}
+
+    fn attribute(&mut self, _key: &str, _value: &str) {}
+}
+
+pub fn walk_nodes_on_element(element: &Element, walker: &mut impl Walker) {
+    for Attribute { key, value } in &element.attributes {
+        walker.attribute(key, value);
+    }
+    if let ElementChildren::Children(ref children) = element.children {
+        for child in children {
+            walk_nodes_on_node(child, walker);
+        }
+    }
+}
+
+pub fn walk_nodes_on_node(node: &Node, walker: &mut impl Walker) {
+    match node {
+        Node::Element(element) => {
+            walk_nodes_on_element(element, walker);
+        }
+        Node::TextNode(content) => {
+            // cb(&unescape_string_content(content));
+            walker.text_node(content);
+        }
+        Node::Comment(..) | Node::MismatchClosingTag(..) => {}
+    }
 }

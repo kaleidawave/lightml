@@ -52,9 +52,9 @@ jobs:
         continue-on-error: true
         run: |
           for files "binaries/*" each
+            echo "Running $file"
             let out = run "./$file" $INPUT --check
             # echo run stat "./$file"
-            echo "Running $file"
             echo $out
         shell: shell-language {0}
         env:
@@ -82,10 +82,9 @@ jobs:
             echo "Running $file"
             let output = run valgrind $file $INPUT --check --merge-stdout-and-stderr
             let allocated = regexp $output "(?<bytes>[\\d,]+) bytes allocated" extract bytes
-            echo "allocated='$allocated'"
-            # let allocated = replace $allocated "," ""
-            # let allocated = format_number $allocated
-            # append $to "- `$file`: `$allocated` allocated"
+            let allocated = replace $allocated "," ""
+            let allocated = format_number $allocated
+            append $to "- `$file`: `$allocated` allocated"
         shell: shell-language {0}
         env:
           INPUT: "out.html"
@@ -98,7 +97,7 @@ jobs:
           for files "binaries/*" each
             echo "Running $file"
             let output = run valgrind --tool=callgrind $file $INPUT --check --merge-stdout-and-stderr
-            let instructions = regexp $output "Collected: (?<name>\\d+?)\\b" extract name
+            let instructions = regexp $output "Collected : (?<name>\\d+?)\\b" extract name
             echo "instructions='$instructions'"
             # let instructions = format_number $instructions
             # append $to "- `$file`: `$instructions` instructions"
