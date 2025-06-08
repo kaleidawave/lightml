@@ -56,8 +56,8 @@ impl Node<'_> {
 }
 
 pub type ContextChain = std::vec::Vec<ContextItem>;
-pub type Allocator = bumpalo::Bump;
-// pub type Allocator = allocator_api2::alloc::Global;
+// pub type Allocator = bumpalo::Bump;
+pub type Allocator = allocator_api2::alloc::Global;
 
 impl<'a> Node<'a> {
     fn from_reader(
