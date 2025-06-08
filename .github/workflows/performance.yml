@@ -98,9 +98,8 @@ jobs:
             echo "Running $file"
             let output = run valgrind --tool=callgrind $file $INPUT --check --merge-stdout-and-stderr
             let instructions = regexp $output "Collected : (?<name>\\d+?)\\b" extract name
-            echo "instructions='$instructions'"
-            # let instructions = format_number $instructions
-            # append $to "- `$file`: `$instructions` instructions"
+            let instructions = format_number $instructions
+            append $to "- `$file`: `$instructions` instructions"
         shell: shell-language {0}
         env:
           INPUT: "out.html"

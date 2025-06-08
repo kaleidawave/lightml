@@ -1,8 +1,8 @@
-use lightml::{Document, Lexer};
+use lightml::{Document, Lexer, Allocator};
 
 fn as_lines(content: &str) -> String {
     let mut reader = Lexer::new(content);
-    let allocator = bumpalo::Bump::new();
+    let allocator = Allocator::default();
     let result = Document::from_reader(&mut reader, &allocator);
     // TODO does this throw information away?
     let result = result.map(|document| document.html_element);
